@@ -1,0 +1,14 @@
+services:
+  core-keeper:
+    image: escaping/core-keeper-dedicated:latest
+    container_name: core-keeper-dedicated
+    restart: unless-stopped
+    stop_grace_period: 2m
+    volumes:
+      - ${SERVER_DIR}:/home/steam/core-keeper-dedicated
+      - ${DATA_DIR}:/home/steam/core-keeper-data
+    env_file:
+      - path: core.env
+        required: true
+      - path: core.secrets.env
+        required: true
