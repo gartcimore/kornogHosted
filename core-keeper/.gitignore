@@ -2,3 +2,5 @@ core.secrets.env
 .env
 server-files/
 server-data/
+server/
+data/
