@@ -1,0 +1,12 @@
+services:
+  librespeed:
+    image: ghcr.io/librespeed/speedtest:latest
+    container_name: librespeed
+    restart: unless-stopped
+    env_file:
+      - .env
+      - librespeed.secrets.env
+    ports:
+      - 8090:8080
+    volumes:
+      - ${DATA_DIR}:/database
