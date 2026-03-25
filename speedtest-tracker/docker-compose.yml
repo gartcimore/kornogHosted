@@ -7,10 +7,7 @@ services:
       - 8080:80
       - 8443:443
     env_file:
+      - .env
       - speedtest.secrets.env
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - DB_CONNECTION=${DB_CONNECTION}
     volumes:
-      - ${DATA_DIR}:/config
+      - ${DATA_DIR}:/config:Z
