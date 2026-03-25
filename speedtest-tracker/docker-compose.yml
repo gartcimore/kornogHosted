@@ -10,4 +10,4 @@ services:
       - .env
       - speedtest.secrets.env
     volumes:
-      - ${DATA_DIR}:/config:Z
+      - ${DATA_DIR}:/config
