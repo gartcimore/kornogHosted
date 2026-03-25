@@ -1,0 +1,16 @@
+services:
+  speedtest-tracker:
+    image: lscr.io/linuxserver/speedtest-tracker:latest
+    container_name: speedtest-tracker
+    restart: unless-stopped
+    ports:
+      - 8080:80
+      - 8443:443
+    env_file:
+      - speedtest.secrets.env
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - DB_CONNECTION=${DB_CONNECTION}
+    volumes:
+      - ${DATA_DIR}:/config

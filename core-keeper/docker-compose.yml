@@ -8,5 +8,5 @@ services:
       - ${SERVER_DIR}:/home/steam/core-keeper-dedicated
       - ${DATA_DIR}:/home/steam/core-keeper-data
     env_file:
-      - core.env
+      - .env
       - core.secrets.env
