@@ -1,0 +1,10 @@
+services:
+  dnsmasq:
+    image: jpillora/dnsmasq
+    container_name: dnsmasq-kornoglab
+    restart: unless-stopped
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      - ./dnsmasq.conf:/etc/dnsmasq.conf:ro
