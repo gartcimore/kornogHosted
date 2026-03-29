@@ -1,0 +1,4 @@
+acme.secrets.env
+.env
+acme-data/
+certs/

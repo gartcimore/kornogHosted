@@ -1,0 +1,13 @@
+services:
+  acme:
+    image: neilpang/acme.sh
+    container_name: acme-kornoglab
+    restart: unless-stopped
+    env_file:
+      - .env
+      - acme.secrets.env
+    volumes:
+      - ${ACME_DATA_DIR}:/acme.sh
+      - ${CERTS_DIR}:/certs
+      - ./entrypoint.sh:/entrypoint.sh:ro
+    entrypoint: /entrypoint.sh
