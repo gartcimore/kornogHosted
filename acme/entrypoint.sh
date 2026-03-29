@@ -7,6 +7,7 @@ CERT_DIR="/certs"
 # Issue cert if not already done
 if [ ! -f "/acme.sh/${DOMAIN}_ecc/${DOMAIN}.cer" ]; then
   echo "No existing cert found, issuing new certificate..."
+  acme.sh --set-default-ca --server letsencrypt
   acme.sh --issue --dns dns_ovh \
     -d "${DOMAIN}" \
     -d "*.${DOMAIN}"

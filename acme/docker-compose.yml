@@ -10,4 +10,4 @@ services:
       - ${ACME_DATA_DIR}:/acme.sh
       - ${CERTS_DIR}:/certs
       - ./entrypoint.sh:/entrypoint.sh:ro
-    entrypoint: /entrypoint.sh
+    entrypoint: ["sh", "/entrypoint.sh"]
