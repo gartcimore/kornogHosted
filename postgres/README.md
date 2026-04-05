@@ -15,9 +15,7 @@ docker compose up -d
 
 ## Adding a database for a new service
 
-Add a `CREATE DATABASE` line in `init/create-databases.sh`. This script runs on first start only (when the data directory is empty).
-
-For an existing instance, create the database manually:
+The first database (`infisical`) is created automatically via the `POSTGRES_DB` env var on first start. For additional databases on an existing instance:
 
 ```bash
 docker exec -it postgres-kornoglab psql -U postgres -c "CREATE DATABASE myservice;"
@@ -36,4 +34,3 @@ Other Docker Compose services can reach this instance at `postgres-kornoglab:543
 | `.env.sample` | Template for `.env` |
 | `postgres.secrets.env` | Database password (gitignored) |
 | `postgres.secrets.env.sample` | Template for `postgres.secrets.env` |
-| `init/create-databases.sh` | Creates databases on first start |

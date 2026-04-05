@@ -1,0 +1,12 @@
+services:
+  infisical:
+    image: infisical/infisical:latest
+    container_name: infisical-kornoglab
+    restart: unless-stopped
+    env_file:
+      - .env
+      - infisical.secrets.env
+    ports:
+      - "${INFISICAL_PORT:-8060}:8080"
+    environment:
+      - NODE_ENV=production
