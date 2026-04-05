@@ -1,6 +1,6 @@
 core.secrets.env
 .env
-server-files/
-server-data/
-server/
-data/
+data/*
+!data/.gitkeep
+server/*
+!server/.gitkeep

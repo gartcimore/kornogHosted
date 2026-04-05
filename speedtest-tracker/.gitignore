@@ -1,3 +1,4 @@
 speedtest.secrets.env
 .env
-data/
+data/*
+!data/.gitkeep

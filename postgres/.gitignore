@@ -1,4 +1,4 @@
-librespeed.secrets.env
+postgres.secrets.env
 .env
 data/*
 !data/.gitkeep
