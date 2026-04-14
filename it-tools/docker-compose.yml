@@ -5,3 +5,4 @@ services:
     restart: unless-stopped
     ports:
       - 8070:80
+    mem_limit: 64m

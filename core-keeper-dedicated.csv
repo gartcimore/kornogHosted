@@ -1,0 +1,866 @@
+core-keeper-dedicated
+date,stream,content
+2026/04/13 11:07:59,stdout,"[0;37mSending Discord json: {\"embeds\":[{\"title\":\"Server Stopped\",\"description\":\" stopped\",\"color\":12779520}]}[0m
+"
+2026/04/13 11:07:59,stderr,/home/steam/scripts/launch.sh: line 11:    55 Killed                  DISPLAY=:99 LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${STEAMCMDDIR}/linux64/" ./CoreKeeperServer "${params[@]}"
+
+2026/04/13 11:07:57,stdout,PugDatabase initialized 2553 prefabs
+
+2026/04/13 11:07:56,stdout,"BlunderBombExplosionEntity (UnityEngine.GameObject) has RotationAuthoring.rotatePhysics set to true, but no collider is present.
+"
+2026/04/13 11:07:54,stdout,"Converting 1 root objects for ServerWorld with 334 converters, 7 post-converters in staging world, and 4 post-converters in final world.
+"
+2026/04/13 11:07:54,stdout,ECSManager: converting authoring data for the server world.
+
+2026/04/13 11:07:54,stdout,ECSManager: converting authoring data.
+
+2026/04/13 11:07:54,stdout,ECSManager: removing worlds from the update loop.
+
+2026/04/13 11:07:51,stdout,No mods have registered for ObjectCreated or ObjectDestroyed callbacks. Disabling ObjectCreatedSystem.
+
+2026/04/13 11:07:49,stdout,StartGameRPCSystem OnCreate
+
+2026/04/13 11:07:48,stdout,New season: Easter
+
+2026/04/13 11:07:48,stdout,or by manually adding both systems to the same group's update list.
+
+2026/04/13 11:07:48,stdout,"Make sure that both systems are in the same system group with [UpdateInGroup(typeof(Unity.Entities.SimulationSystemGroup))],
+"
+2026/04/13 11:07:48,stdout,This attribute can only order systems that are members of the same ComponentSystemGroup instance.
+
+2026/04/13 11:07:48,stdout,Ignoring invalid [Unity.Entities.UpdateAfterAttribute] attribute on Unity.Entities.CompanionGameObjectUpdateTransformSystem targeting Unity.Transforms.TransformSystemGroup.
+
+2026/04/13 11:07:47,stdout,PugDatabase initialized 2553 prefabs
+
+2026/04/13 11:07:45,stdout,"BlunderBombExplosionEntity (UnityEngine.GameObject) has RotationAuthoring.rotatePhysics set to true, but no collider is present.
+"
+2026/04/13 11:07:42,stdout,"Converting 2554 root objects for Default World with 334 converters, 7 post-converters in staging world, and 4 post-converters in final world.
+"
+2026/04/13 11:07:41,stdout,ECSManager: Found 334 converter type(s)
+
+2026/04/13 11:07:41,stdout,"src/steamnetworkingsockets/clientlib/steamnetworkingsockets_lowlevel.cpp (2764) : Assertion Failed: SteamnetworkingSockets service thread waited 81ms for lock!  This directly adds to network latency!  It could be a bug, but it's usually caused by general performance problem such as thread starvation or a debug output handler taking too long.
+"
+2026/04/13 11:07:41,stdout,Skipping loot mod /home/steam/core-keeper-dedicated/CoreKeeperServer_Data/StreamingAssets/Conf/Loot/Empty.json for loot table Empty (0)
+
+2026/04/13 11:07:41,stdout,Skipping faction mod /home/steam/core-keeper-dedicated/CoreKeeperServer_Data/StreamingAssets/Conf/Factions/None.json with faction None (0)
+
+2026/04/13 11:07:41,stdout,Old and new server gameid is the same
+
+2026/04/13 11:07:41,stdout,PlatformConfiguration: applying PrefsManager session settings.
+
+2026/04/13 11:07:41,stdout,PlatformConfiguration: applying PrefsManager audio settings.
+
+2026/04/13 11:07:41,stdout,PlatformConfiguration: applying PrefsManager visual quality settings.
+
+2026/04/13 11:07:41,stdout,PlatformConfiguration: applying settings for platform variant Linux.
+
+2026/04/13 11:07:41,stdout,PlatformConfiguration: loading platform configuration for variant PC.
+
+2026/04/13 11:07:41,stdout,PlatformConfiguration: platform configuration for variant Linux was not found.
+
+2026/04/13 11:07:41,stdout,PlatformConfiguration: loading platform configuration for variant Linux.
+
+2026/04/13 11:07:41,stdout,Job worker count is 3
+
+2026/04/13 11:07:41,stdout,Core count is 4
+
+2026/04/13 11:07:41,stdout,Start initializing all managers
+
+2026/04/13 11:07:36,stdout,Global manager Resources.Load
+
+2026/04/13 11:07:36,stdout,Initialize global manager
+
+2026/04/13 11:07:36,stdout,Manager prelaunch and GO initialization starting...
+
+2026/04/13 11:07:36,stdout,Checking system requirements: PASS
+
+2026/04/13 11:07:33,stdout,UnloadTime: 2.882278 ms
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[17]: 12Ygg34!#
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[16]: -password
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[15]: 4
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[14]: -maxplayers
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[13]: /home/steam/core-keeper-data
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[12]: -datapath
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[11]: rBhHrvTfq5Pggnv
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[10]: -gameid
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[9]: 0
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[8]: -worldmode
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[7]: Yggdrasil
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[6]: -worldname
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[5]: 0
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[4]: -world
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[3]: /home/steam/core-keeper-dedicated/logs/2026-04-13_09-07-25.log
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[2]: -logfile
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[1]: -batchmode
+
+2026/04/13 11:07:32,stdout,CommandLineArgs.args[0]: ./CoreKeeperServer
+
+2026/04/13 11:07:32,stdout,Setup Steam Server
+
+2026/04/13 11:07:32,stdout,flock /sys/devices/virtual/dmi/id/sys_vendor LOCK_SH failed. errno = 13flock /sys/devices/virtual/dmi/id/product_name LOCK_SH failed. errno = 13Logged in with userid:3459715074
+
+2026/04/13 11:07:31,stdout,Steam API initialized
+
+2026/04/13 11:07:31,stdout,[S_API FAIL] Tried to access Steam interface SteamNetworkingUtils004 before SteamAPI_Init succeeded.
+
+2026/04/13 11:07:31,stdout,Setting breakpad minidump AppID = 1621690
+
+2026/04/13 11:07:31,stdout,[S_API] SteamAPI_Init(): Loaded local 'steamclient.so' OK.
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[17]: 12Ygg34!#
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[16]: -password
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[15]: 4
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[14]: -maxplayers
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[13]: /home/steam/core-keeper-data
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[12]: -datapath
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[11]: rBhHrvTfq5Pggnv
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[10]: -gameid
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[9]: 0
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[8]: -worldmode
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[7]: Yggdrasil
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[6]: -worldname
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[5]: 0
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[4]: -world
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[3]: /home/steam/core-keeper-dedicated/logs/2026-04-13_09-07-25.log
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[2]: -logfile
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[1]: -batchmode
+
+2026/04/13 11:07:30,stdout,CommandLineArgs.args[0]: ./CoreKeeperServer
+
+2026/04/13 11:07:30,stdout,Initializing Steamworks with AppID 1621690
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[17]: 12Ygg34!#
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[16]: -password
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[15]: 4
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[14]: -maxplayers
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[13]: /home/steam/core-keeper-data
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[12]: -datapath
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[11]: rBhHrvTfq5Pggnv
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[10]: -gameid
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[9]: 0
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[8]: -worldmode
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[7]: Yggdrasil
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[6]: -worldname
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[5]: 0
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[4]: -world
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[3]: /home/steam/core-keeper-dedicated/logs/2026-04-13_09-07-25.log
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[2]: -logfile
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[1]: -batchmode
+
+2026/04/13 11:07:29,stdout,CommandLineArgs.args[0]: ./CoreKeeperServer
+
+2026/04/13 11:07:29,stdout,--- END Startup info ---
+
+2026/04/13 11:07:29,stdout,"Graphics device: llvmpipe (LLVM 19.1.7, 128 bits) (OpenGLCore, OpenGL 4.5 (Core Profile) Mesa 25.0.7-2)
+"
+2026/04/13 11:07:29,stdout,OS version: Linux 4.4 Debian GNU/Linux 13 64bit
+
+2026/04/13 11:07:29,stdout,Unity version: 6000.0.59f2
+
+2026/04/13 11:07:29,stdout,Game version: 1.1.2.10-bcc6
+
+2026/04/13 11:07:29,stdout,Time (UTC): 2026-04-13T09:07:29Z
+
+2026/04/13 11:07:29,stdout,--- Startup info ---
+
+2026/04/13 11:07:28,stdout,[Physics::Module] Threading Mode: Multi-Threaded
+
+2026/04/13 11:07:28,stdout,[Physics::Module] Integration Version: 1.0.0
+
+2026/04/13 11:07:28,stdout,[Physics::Module] SDK Version: 4.1.2
+
+2026/04/13 11:07:28,stdout,[Physics::Module] Id: 0xf2b8ea05
+
+2026/04/13 11:07:28,stdout,[Physics::Module] Name: PhysX
+
+2026/04/13 11:07:28,stdout,[Physics::Module] Selected backend.
+
+2026/04/13 11:07:28,stdout,"- Finished resetting the current domain, in  0.006 seconds
+"
+2026/04/13 11:07:28,stdout,"- Loaded All Assemblies, in  1.199 seconds
+"
+2026/04/13 11:07:27,stdout,Begin MonoManager ReloadAssembly
+
+2026/04/13 11:07:27,stdout,OPENGL LOG: Creating OpenGL 4.5 graphics device ; Context level  <OpenGL 4.5> ; Context handle 12789568
+
+2026/04/13 11:07:27,stdout,_EXT_texture_sRGB_decode GL_EXT_texture_shadow_lod GL_EXT_texture_shared_exponent GL_EXT_texture_snorm GL_EXT_texture_storage GL_EXT_texture_swizzle GL_EXT_timer_query GL_EXT_transform_feedback GL_EXT_vertex_array_bgra GL_EXT_vertex_attrib_64bit GL_IBM_multimode_draw_arrays GL_INTEL_shader_atomic_float_minmax GL_KHR_blend_equation_advanced GL_KHR_blend_equation_advanced_coherent GL_KHR_context_flush_control GL_KHR_debug GL_KHR_no_error GL_KHR_parallel_shader_compile GL_KHR_robust_buffer_access_behavior GL_KHR_robustness GL_KHR_texture_compression_astc_ldr GL_KHR_texture_compression_astc_sliced_3d GL_MESA_framebuffer_flip_y GL_MESA_pack_invert GL_MESA_shader_integer_functions GL_MESA_texture_signed_rgba GL_NVX_gpu_memory_info GL_NV_alpha_to_coverage_dither_control GL_NV_conditional_render GL_NV_copy_image GL_NV_depth_clamp GL_NV_packed_depth_stencil GL_NV_shader_atomic_float GL_NV_texture_barrier GL_OES_EGL_image GL_OVR_multiview GL_OVR_multiview2 GL_S3_s3tc
+
+2026/04/13 11:07:27,stdout,_equation_separate GL_ATI_meminfo GL_ATI_texture_float GL_ATI_texture_mirror_once GL_EXT_EGL_image_storage GL_EXT_EGL_image_storage_compression GL_EXT_EGL_sync GL_EXT_abgr GL_EXT_blend_equation_separate GL_EXT_debug_label GL_EXT_draw_buffers2 GL_EXT_draw_instanced GL_EXT_framebuffer_blit GL_EXT_framebuffer_multisample GL_EXT_framebuffer_multisample_blit_scaled GL_EXT_framebuffer_object GL_EXT_framebuffer_sRGB GL_EXT_memory_object GL_EXT_memory_object_fd GL_EXT_packed_depth_stencil GL_EXT_packed_float GL_EXT_pixel_buffer_object GL_EXT_polygon_offset_clamp GL_EXT_provoking_vertex GL_EXT_shader_framebuffer_fetch GL_EXT_shader_framebuffer_fetch_non_coherent GL_EXT_shader_image_load_formatted GL_EXT_shader_integer_mix GL_EXT_texture_array GL_EXT_texture_compression_dxt1 GL_EXT_texture_compression_rgtc GL_EXT_texture_compression_s3tc GL_EXT_texture_filter_anisotropic GL_EXT_texture_filter_minmax GL_EXT_texture_integer GL_EXT_texture_mirror_clamp GL_EXT_texture_sRGB GL_EXT_texture_sRGB_R8 GL_EXT_texture_sRGB_RG8 GL
+
+2026/04/13 11:07:27,stdout,RB_texture_compression_bptc GL_ARB_texture_compression_rgtc GL_ARB_texture_cube_map_array GL_ARB_texture_filter_anisotropic GL_ARB_texture_filter_minmax GL_ARB_texture_float GL_ARB_texture_gather GL_ARB_texture_mirror_clamp_to_edge GL_ARB_texture_multisample GL_ARB_texture_non_power_of_two GL_ARB_texture_query_levels GL_ARB_texture_query_lod GL_ARB_texture_rectangle GL_ARB_texture_rg GL_ARB_texture_rgb10_a2ui GL_ARB_texture_stencil8 GL_ARB_texture_storage GL_ARB_texture_storage_multisample GL_ARB_texture_swizzle GL_ARB_texture_view GL_ARB_timer_query GL_ARB_transform_feedback2 GL_ARB_transform_feedback3 GL_ARB_transform_feedback_instanced GL_ARB_transform_feedback_overflow_query GL_ARB_uniform_buffer_object GL_ARB_vertex_array_bgra GL_ARB_vertex_array_object GL_ARB_vertex_attrib_64bit GL_ARB_vertex_attrib_binding GL_ARB_vertex_buffer_object GL_ARB_vertex_shader GL_ARB_vertex_type_10f_11f_11f_rev GL_ARB_vertex_type_2_10_10_10_rev GL_ARB_viewport_array GL_ARM_shader_framebuffer_fetch_depth_stencil GL_ATI_blend
+
+2026/04/13 11:07:27,stdout,_ARB_query_buffer_object GL_ARB_robust_buffer_access_behavior GL_ARB_robustness GL_ARB_sample_shading GL_ARB_sampler_objects GL_ARB_seamless_cube_map GL_ARB_seamless_cubemap_per_texture GL_ARB_separate_shader_objects GL_ARB_shader_atomic_counter_ops GL_ARB_shader_atomic_counters GL_ARB_shader_ballot GL_ARB_shader_bit_encoding GL_ARB_shader_clock GL_ARB_shader_draw_parameters GL_ARB_shader_group_vote GL_ARB_shader_image_load_store GL_ARB_shader_image_size GL_ARB_shader_objects GL_ARB_shader_precision GL_ARB_shader_stencil_export GL_ARB_shader_storage_buffer_object GL_ARB_shader_subroutine GL_ARB_shader_texture_image_samples GL_ARB_shader_texture_lod GL_ARB_shader_viewport_layer_array GL_ARB_shading_language_420pack GL_ARB_shading_language_include GL_ARB_shading_language_packing GL_ARB_spirv_extensions GL_ARB_stencil_texturing GL_ARB_sync GL_ARB_tessellation_shader GL_ARB_texture_barrier GL_ARB_texture_border_clamp GL_ARB_texture_buffer_object GL_ARB_texture_buffer_object_rgb32 GL_ARB_texture_buffer_range GL_A
+
+2026/04/13 11:07:27,stdout,RB_draw_buffers_blend GL_ARB_draw_elements_base_vertex GL_ARB_draw_indirect GL_ARB_draw_instanced GL_ARB_enhanced_layouts GL_ARB_explicit_attrib_location GL_ARB_explicit_uniform_location GL_ARB_fragment_coord_conventions GL_ARB_fragment_layer_viewport GL_ARB_fragment_shader GL_ARB_framebuffer_no_attachments GL_ARB_framebuffer_object GL_ARB_framebuffer_sRGB GL_ARB_get_program_binary GL_ARB_get_texture_sub_image GL_ARB_gl_spirv GL_ARB_gpu_shader5 GL_ARB_gpu_shader_fp64 GL_ARB_gpu_shader_int64 GL_ARB_half_float_pixel GL_ARB_half_float_vertex GL_ARB_indirect_parameters GL_ARB_instanced_arrays GL_ARB_internalformat_query GL_ARB_internalformat_query2 GL_ARB_invalidate_subdata GL_ARB_map_buffer_alignment GL_ARB_map_buffer_range GL_ARB_multi_bind GL_ARB_multi_draw_indirect GL_ARB_occlusion_query2 GL_ARB_parallel_shader_compile GL_ARB_pipeline_statistics_query GL_ARB_pixel_buffer_object GL_ARB_point_sprite GL_ARB_polygon_offset_clamp GL_ARB_post_depth_coverage GL_ARB_program_interface_query GL_ARB_provoking_vertex GL
+
+2026/04/13 11:07:27,stdout, GL_3DFX_texture_compression_FXT1 GL_AMD_conservative_depth GL_AMD_draw_buffers_blend GL_AMD_gpu_shader_int64 GL_AMD_multi_draw_indirect GL_AMD_pinned_memory GL_AMD_query_buffer_object GL_AMD_seamless_cubemap_per_texture GL_AMD_shader_stencil_export GL_AMD_shader_trinary_minmax GL_AMD_texture_texture4 GL_AMD_vertex_shader_layer GL_AMD_vertex_shader_viewport_index GL_ANGLE_texture_compression_dxt3 GL_ANGLE_texture_compression_dxt5 GL_ARB_ES2_compatibility GL_ARB_ES3_1_compatibility GL_ARB_ES3_2_compatibility GL_ARB_ES3_compatibility GL_ARB_arrays_of_arrays GL_ARB_base_instance GL_ARB_blend_func_extended GL_ARB_buffer_storage GL_ARB_clear_buffer_object GL_ARB_clear_texture GL_ARB_clip_control GL_ARB_compressed_texture_pixel_storage GL_ARB_compute_shader GL_ARB_conditional_render_inverted GL_ARB_conservative_depth GL_ARB_copy_buffer GL_ARB_copy_image GL_ARB_cull_distance GL_ARB_debug_output GL_ARB_depth_buffer_float GL_ARB_depth_clamp GL_ARB_derivative_control GL_ARB_direct_state_access GL_ARB_draw_buffers GL_A
+
+2026/04/13 11:07:27,stdout,GLES:     0
+
+2026/04/13 11:07:27,stdout,Version:  4.5 (Core Profile) Mesa 25.0.7-2
+
+2026/04/13 11:07:27,stdout,Vendor:   Mesa
+
+2026/04/13 11:07:27,stdout,"Renderer: llvmpipe (LLVM 19.1.7, 128 bits)
+"
+2026/04/13 11:07:27,stdout,GfxDevice: creating device client; kGfxThreadingModeNonThreaded
+
+2026/04/13 11:07:27,stdout,[Subsystems] Discovering subsystems at path /home/steam/core-keeper-dedicated/CoreKeeperServer_Data/UnitySubsystems
+
+2026/04/13 11:07:27,stdout,Initialize engine version: 6000.0.59f2 (ef281c76c3c1)
+
+2026/04/13 11:07:26,stdout,Desktop is 1 x 1 @ 0 Hz
+
+2026/04/13 11:07:26,stdout,Loading player data from /home/steam/core-keeper-dedicated/CoreKeeperServer_Data/data.unity3d
+
+2026/04/13 11:07:26,stdout,[Physics::Module] Id: 0xdecafbad
+
+2026/04/13 11:07:26,stdout,[Physics::Module] Initialized fallback backend.
+
+2026/04/13 11:07:26,stdout,Display 0 'screen': 1x1 (primary device).
+
+2026/04/13 11:07:26,stdout,Input System module state changed to: Initialized.
+
+2026/04/13 11:07:26,stdout,JobSystem: Clamping job-worker-count value 4 to 3
+
+2026/04/13 11:07:26,stdout,JobSystem: Invalid job-worker-count value 4 must be between 0->3
+
+2026/04/13 11:07:25,stdout,Mono config path = '/home/steam/core-keeper-dedicated/CoreKeeperServer_Data/MonoBleedingEdge/etc'
+
+2026/04/13 11:07:25,stdout,Mono path[0] = '/home/steam/core-keeper-dedicated/CoreKeeperServer_Data/Managed'
+
+2026/04/13 11:07:25,stdout,The selected window backend is x11 
+
+2026/04/13 11:07:25,stdout,    "memorysetup-temp-allocator-size-gfx=262144"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-temp-allocator-size-cloud-worker=32768"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-temp-allocator-size-audio-worker=65536"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-temp-allocator-size-nav-mesh-worker=65536"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-temp-allocator-size-preload-manager=262144"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-temp-allocator-size-job-worker=262144"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-temp-allocator-size-background-worker=32768"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-allocator-temp-initial-block-size-worker=262144"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-allocator-temp-initial-block-size-main=262144"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-job-temp-allocator-reduction-small-platforms=262144"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-job-temp-allocator-block-size-background=1048576"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-job-temp-allocator-block-size=2097152"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-temp-allocator-size-main=4194304"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-profiler-editor-allocator-block-size=1048576"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-profiler-allocator-block-size=16777216"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-profiler-bucket-allocator-block-count=1"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-profiler-bucket-allocator-block-size=4194304"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-profiler-bucket-allocator-bucket-count=8"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-profiler-bucket-allocator-granularity=16"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-typetree-allocator-block-size=2097152"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-cache-allocator-block-size=4194304"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-gfx-thread-allocator-block-size=16777216"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-gfx-main-allocator-block-size=16777216"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-thread-allocator-block-size=16777216"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-main-allocator-block-size=16777216"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-bucket-allocator-block-count=1"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-bucket-allocator-block-size=4194304"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-bucket-allocator-bucket-count=8"
+
+2026/04/13 11:07:25,stdout,    "memorysetup-bucket-allocator-granularity=16"
+
+2026/04/13 11:07:25,stdout,[UnityMemory] Configuration Parameters - Can be set up in boot.config
+
+2026/04/13 11:07:25,stdout,-batchmode -logfile /home/steam/core-keeper-dedicated/logs/2026-04-13_09-07-25.log -world 0 -worldname Yggdrasil -worldmode 0 -gameid rBhHrvTfq5Pggnv -datapath /home/steam/core-keeper-data -maxplayers 4 -password 12Ygg34!#
+
+2026/04/13 11:07:25,stdout,"[0m[0;37mMODS_ENABLED is not true, skipping mod installation[0m
+"
+2026/04/13 11:07:25,stdout,[0mUnloading Steam API...[0mOK
+
+2026/04/13 11:07:24,stdout,[0mError! App '1963720' state is 0x6 after update job.
+
+2026/04/13 11:07:24,stdout,"[0m Update state (0x0) unknown, progress: 0.00 (0 / 0)
+"
+2026/04/13 11:07:22,stdout,[0mSuccess! App '1007' fully installed.
+
+2026/04/13 11:07:22,stdout,"[0m Update state (0x0) unknown, progress: 0.00 (0 / 0)
+"
+2026/04/13 11:07:19,stdout,[0mWaiting for user info...[0mOK
+
+2026/04/13 11:07:19,stdout,[0mWaiting for client config...[0mOK
+
+2026/04/13 11:07:19,stdout,Connecting anonymously to Steam Public...[0mOK
+
+2026/04/13 11:07:18,stdout,[0m
+
+2026/04/13 11:07:18,stdout,[0m"@sSteamCmdForcePlatformBitness" = "64"
+
+2026/04/13 11:07:18,stdout,[0m"@sSteamCmdForcePlatformType" = "linux"
+
+2026/04/13 11:07:17,stdout,Loading Steam API...[0mOK
+
+2026/04/13 11:07:17,stdout,-- type 'quit' to exit --
+
+2026/04/13 11:07:17,stdout,Steam Console Client (c) Valve Corporation - version 1773426366
+
+2026/04/13 11:07:17,stdout,UpdateUI: skip show logo
+
+2026/04/13 11:07:17,stdout,[----] Verifying installation...
+
+2026/04/13 11:07:17,stdout,[  0%] Checking for available updates...
+
+2026/04/13 11:07:17,stdout,Logging directory: '/home/steam/Steam/logs'
+
+2026/04/13 11:07:17,stdout,Redirecting stderr to '/home/steam/Steam/logs/stderr.txt'
+
+2026/04/13 11:07:16,stdout,usermod: no changes
+
+2026/04/13 11:07:16,stdout,[1;36mEXECUTING USERMOD[0m
+
+2026/04/13 11:07:11,stdout,"[0;37mSending Discord json: {\"embeds\":[{\"title\":\"Server Stopped\",\"description\":\" stopped\",\"color\":12779520}]}[0m
+"
+2026/04/13 11:07:11,stderr,/home/steam/scripts/launch.sh: line 61:    77 Killed                  DISPLAY=:99 LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${STEAMCMDDIR}/linux64/" ./CoreKeeperServer "${params[@]}"
+
+2026/04/13 11:07:08,stdout,PugDatabase initialized 2553 prefabs
+
+2026/04/13 11:07:08,stdout,"BlunderBombExplosionEntity (UnityEngine.GameObject) has RotationAuthoring.rotatePhysics set to true, but no collider is present.
+"
+2026/04/13 11:07:06,stdout,"Converting 1 root objects for ServerWorld with 334 converters, 7 post-converters in staging world, and 4 post-converters in final world.
+"
+2026/04/13 11:07:06,stdout,ECSManager: converting authoring data for the server world.
+
+2026/04/13 11:07:06,stdout,ECSManager: converting authoring data.
+
+2026/04/13 11:07:06,stdout,ECSManager: removing worlds from the update loop.
+
+2026/04/13 11:07:03,stdout,No mods have registered for ObjectCreated or ObjectDestroyed callbacks. Disabling ObjectCreatedSystem.
+
+2026/04/13 11:07:02,stdout,StartGameRPCSystem OnCreate
+
+2026/04/13 11:07:01,stdout,New season: Easter
+
+2026/04/13 11:07:00,stdout,or by manually adding both systems to the same group's update list.
+
+2026/04/13 11:07:00,stdout,"Make sure that both systems are in the same system group with [UpdateInGroup(typeof(Unity.Entities.SimulationSystemGroup))],
+"
+2026/04/13 11:07:00,stdout,This attribute can only order systems that are members of the same ComponentSystemGroup instance.
+
+2026/04/13 11:07:00,stdout,Ignoring invalid [Unity.Entities.UpdateAfterAttribute] attribute on Unity.Entities.CompanionGameObjectUpdateTransformSystem targeting Unity.Transforms.TransformSystemGroup.
+
+2026/04/13 11:06:58,stdout,PugDatabase initialized 2553 prefabs
+
+2026/04/13 11:06:57,stdout,"BlunderBombExplosionEntity (UnityEngine.GameObject) has RotationAuthoring.rotatePhysics set to true, but no collider is present.
+"
+2026/04/13 11:06:53,stdout,"Converting 2554 root objects for Default World with 334 converters, 7 post-converters in staging world, and 4 post-converters in final world.
+"
+2026/04/13 11:06:52,stdout,ECSManager: Found 334 converter type(s)
+
+2026/04/13 11:06:52,stdout,Skipping loot mod /home/steam/core-keeper-dedicated/CoreKeeperServer_Data/StreamingAssets/Conf/Loot/Empty.json for loot table Empty (0)
+
+2026/04/13 11:06:52,stdout,Skipping faction mod /home/steam/core-keeper-dedicated/CoreKeeperServer_Data/StreamingAssets/Conf/Factions/None.json with faction None (0)
+
+2026/04/13 11:06:52,stdout,Old and new server gameid is the same
+
+2026/04/13 11:06:52,stdout,PlatformConfiguration: applying PrefsManager session settings.
+
+2026/04/13 11:06:52,stdout,PlatformConfiguration: applying PrefsManager audio settings.
+
+2026/04/13 11:06:52,stdout,PlatformConfiguration: applying PrefsManager visual quality settings.
+
+2026/04/13 11:06:52,stdout,PlatformConfiguration: applying settings for platform variant Linux.
+
+2026/04/13 11:06:52,stdout,PlatformConfiguration: loading platform configuration for variant PC.
+
+2026/04/13 11:06:52,stdout,PlatformConfiguration: platform configuration for variant Linux was not found.
+
+2026/04/13 11:06:52,stdout,PlatformConfiguration: loading platform configuration for variant Linux.
+
+2026/04/13 11:06:52,stdout,Job worker count is 3
+
+2026/04/13 11:06:52,stdout,Core count is 4
+
+2026/04/13 11:06:52,stdout,Start initializing all managers
+
+2026/04/13 11:06:47,stdout,Global manager Resources.Load
+
+2026/04/13 11:06:47,stdout,Initialize global manager
+
+2026/04/13 11:06:47,stdout,Manager prelaunch and GO initialization starting...
+
+2026/04/13 11:06:47,stdout,Checking system requirements: PASS
+
+2026/04/13 11:06:43,stdout,UnloadTime: 4.085921 ms
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[17]: 12Ygg34!#
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[16]: -password
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[15]: 4
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[14]: -maxplayers
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[13]: /home/steam/core-keeper-data
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[12]: -datapath
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[11]: rBhHrvTfq5Pggnv
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[10]: -gameid
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[9]: 0
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[8]: -worldmode
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[7]: Yggdrasil
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[6]: -worldname
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[5]: 0
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[4]: -world
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[3]: /home/steam/core-keeper-dedicated/logs/2026-04-13_09-06-34.log
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[2]: -logfile
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[1]: -batchmode
+
+2026/04/13 11:06:42,stdout,CommandLineArgs.args[0]: ./CoreKeeperServer
+
+2026/04/13 11:06:42,stdout,Setup Steam Server
+
+2026/04/13 11:06:42,stdout,flock /sys/devices/virtual/dmi/id/sys_vendor LOCK_SH failed. errno = 13flock /sys/devices/virtual/dmi/id/product_name LOCK_SH failed. errno = 13Logged in with userid:3459369986
+
+2026/04/13 11:06:42,stdout,Steam API initialized
+
+2026/04/13 11:06:42,stdout,[S_API FAIL] Tried to access Steam interface SteamNetworkingUtils004 before SteamAPI_Init succeeded.
+
+2026/04/13 11:06:42,stdout,Setting breakpad minidump AppID = 1621690
+
+2026/04/13 11:06:41,stdout,[S_API] SteamAPI_Init(): Loaded local 'steamclient.so' OK.
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[17]: 12Ygg34!#
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[16]: -password
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[15]: 4
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[14]: -maxplayers
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[13]: /home/steam/core-keeper-data
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[12]: -datapath
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[11]: rBhHrvTfq5Pggnv
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[10]: -gameid
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[9]: 0
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[8]: -worldmode
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[7]: Yggdrasil
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[6]: -worldname
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[5]: 0
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[4]: -world
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[3]: /home/steam/core-keeper-dedicated/logs/2026-04-13_09-06-34.log
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[2]: -logfile
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[1]: -batchmode
+
+2026/04/13 11:06:41,stdout,CommandLineArgs.args[0]: ./CoreKeeperServer
+
+2026/04/13 11:06:41,stdout,Initializing Steamworks with AppID 1621690
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[17]: 12Ygg34!#
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[16]: -password
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[15]: 4
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[14]: -maxplayers
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[13]: /home/steam/core-keeper-data
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[12]: -datapath
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[11]: rBhHrvTfq5Pggnv
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[10]: -gameid
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[9]: 0
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[8]: -worldmode
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[7]: Yggdrasil
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[6]: -worldname
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[5]: 0
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[4]: -world
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[3]: /home/steam/core-keeper-dedicated/logs/2026-04-13_09-06-34.log
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[2]: -logfile
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[1]: -batchmode
+
+2026/04/13 11:06:40,stdout,CommandLineArgs.args[0]: ./CoreKeeperServer
+
+2026/04/13 11:06:40,stdout,--- END Startup info ---
+
+2026/04/13 11:06:40,stdout,"Graphics device: llvmpipe (LLVM 19.1.7, 128 bits) (OpenGLCore, OpenGL 4.5 (Core Profile) Mesa 25.0.7-2)
+"
+2026/04/13 11:06:40,stdout,OS version: Linux 4.4 Debian GNU/Linux 13 64bit
+
+2026/04/13 11:06:40,stdout,Unity version: 6000.0.59f2
+
+2026/04/13 11:06:40,stdout,Game version: 1.1.2.10-bcc6
+
+2026/04/13 11:06:40,stdout,Time (UTC): 2026-04-13T09:06:40Z
+
+2026/04/13 11:06:40,stdout,--- Startup info ---
+
+2026/04/13 11:06:38,stdout,[Physics::Module] Threading Mode: Multi-Threaded
+
+2026/04/13 11:06:38,stdout,[Physics::Module] Integration Version: 1.0.0
+
+2026/04/13 11:06:38,stdout,[Physics::Module] SDK Version: 4.1.2
+
+2026/04/13 11:06:38,stdout,[Physics::Module] Id: 0xf2b8ea05
+
+2026/04/13 11:06:38,stdout,[Physics::Module] Name: PhysX
+
+2026/04/13 11:06:38,stdout,[Physics::Module] Selected backend.
+
+2026/04/13 11:06:38,stdout,"- Finished resetting the current domain, in  0.040 seconds
+"
+2026/04/13 11:06:38,stdout,"- Loaded All Assemblies, in  1.081 seconds
+"
+2026/04/13 11:06:37,stdout,Begin MonoManager ReloadAssembly
+
+2026/04/13 11:06:37,stdout,OPENGL LOG: Creating OpenGL 4.5 graphics device ; Context level  <OpenGL 4.5> ; Context handle 33177728
+
+2026/04/13 11:06:37,stdout,_EXT_texture_sRGB_decode GL_EXT_texture_shadow_lod GL_EXT_texture_shared_exponent GL_EXT_texture_snorm GL_EXT_texture_storage GL_EXT_texture_swizzle GL_EXT_timer_query GL_EXT_transform_feedback GL_EXT_vertex_array_bgra GL_EXT_vertex_attrib_64bit GL_IBM_multimode_draw_arrays GL_INTEL_shader_atomic_float_minmax GL_KHR_blend_equation_advanced GL_KHR_blend_equation_advanced_coherent GL_KHR_context_flush_control GL_KHR_debug GL_KHR_no_error GL_KHR_parallel_shader_compile GL_KHR_robust_buffer_access_behavior GL_KHR_robustness GL_KHR_texture_compression_astc_ldr GL_KHR_texture_compression_astc_sliced_3d GL_MESA_framebuffer_flip_y GL_MESA_pack_invert GL_MESA_shader_integer_functions GL_MESA_texture_signed_rgba GL_NVX_gpu_memory_info GL_NV_alpha_to_coverage_dither_control GL_NV_conditional_render GL_NV_copy_image GL_NV_depth_clamp GL_NV_packed_depth_stencil GL_NV_shader_atomic_float GL_NV_texture_barrier GL_OES_EGL_image GL_OVR_multiview GL_OVR_multiview2 GL_S3_s3tc
+
+2026/04/13 11:06:37,stdout,_equation_separate GL_ATI_meminfo GL_ATI_texture_float GL_ATI_texture_mirror_once GL_EXT_EGL_image_storage GL_EXT_EGL_image_storage_compression GL_EXT_EGL_sync GL_EXT_abgr GL_EXT_blend_equation_separate GL_EXT_debug_label GL_EXT_draw_buffers2 GL_EXT_draw_instanced GL_EXT_framebuffer_blit GL_EXT_framebuffer_multisample GL_EXT_framebuffer_multisample_blit_scaled GL_EXT_framebuffer_object GL_EXT_framebuffer_sRGB GL_EXT_memory_object GL_EXT_memory_object_fd GL_EXT_packed_depth_stencil GL_EXT_packed_float GL_EXT_pixel_buffer_object GL_EXT_polygon_offset_clamp GL_EXT_provoking_vertex GL_EXT_shader_framebuffer_fetch GL_EXT_shader_framebuffer_fetch_non_coherent GL_EXT_shader_image_load_formatted GL_EXT_shader_integer_mix GL_EXT_texture_array GL_EXT_texture_compression_dxt1 GL_EXT_texture_compression_rgtc GL_EXT_texture_compression_s3tc GL_EXT_texture_filter_anisotropic GL_EXT_texture_filter_minmax GL_EXT_texture_integer GL_EXT_texture_mirror_clamp GL_EXT_texture_sRGB GL_EXT_texture_sRGB_R8 GL_EXT_texture_sRGB_RG8 GL
+
+2026/04/13 11:06:37,stdout,RB_texture_compression_bptc GL_ARB_texture_compression_rgtc GL_ARB_texture_cube_map_array GL_ARB_texture_filter_anisotropic GL_ARB_texture_filter_minmax GL_ARB_texture_float GL_ARB_texture_gather GL_ARB_texture_mirror_clamp_to_edge GL_ARB_texture_multisample GL_ARB_texture_non_power_of_two GL_ARB_texture_query_levels GL_ARB_texture_query_lod GL_ARB_texture_rectangle GL_ARB_texture_rg GL_ARB_texture_rgb10_a2ui GL_ARB_texture_stencil8 GL_ARB_texture_storage GL_ARB_texture_storage_multisample GL_ARB_texture_swizzle GL_ARB_texture_view GL_ARB_timer_query GL_ARB_transform_feedback2 GL_ARB_transform_feedback3 GL_ARB_transform_feedback_instanced GL_ARB_transform_feedback_overflow_query GL_ARB_uniform_buffer_object GL_ARB_vertex_array_bgra GL_ARB_vertex_array_object GL_ARB_vertex_attrib_64bit GL_ARB_vertex_attrib_binding GL_ARB_vertex_buffer_object GL_ARB_vertex_shader GL_ARB_vertex_type_10f_11f_11f_rev GL_ARB_vertex_type_2_10_10_10_rev GL_ARB_viewport_array GL_ARM_shader_framebuffer_fetch_depth_stencil GL_ATI_blend
+
+2026/04/13 11:06:37,stdout,_ARB_query_buffer_object GL_ARB_robust_buffer_access_behavior GL_ARB_robustness GL_ARB_sample_shading GL_ARB_sampler_objects GL_ARB_seamless_cube_map GL_ARB_seamless_cubemap_per_texture GL_ARB_separate_shader_objects GL_ARB_shader_atomic_counter_ops GL_ARB_shader_atomic_counters GL_ARB_shader_ballot GL_ARB_shader_bit_encoding GL_ARB_shader_clock GL_ARB_shader_draw_parameters GL_ARB_shader_group_vote GL_ARB_shader_image_load_store GL_ARB_shader_image_size GL_ARB_shader_objects GL_ARB_shader_precision GL_ARB_shader_stencil_export GL_ARB_shader_storage_buffer_object GL_ARB_shader_subroutine GL_ARB_shader_texture_image_samples GL_ARB_shader_texture_lod GL_ARB_shader_viewport_layer_array GL_ARB_shading_language_420pack GL_ARB_shading_language_include GL_ARB_shading_language_packing GL_ARB_spirv_extensions GL_ARB_stencil_texturing GL_ARB_sync GL_ARB_tessellation_shader GL_ARB_texture_barrier GL_ARB_texture_border_clamp GL_ARB_texture_buffer_object GL_ARB_texture_buffer_object_rgb32 GL_ARB_texture_buffer_range GL_A
+
+2026/04/13 11:06:37,stdout,RB_draw_buffers_blend GL_ARB_draw_elements_base_vertex GL_ARB_draw_indirect GL_ARB_draw_instanced GL_ARB_enhanced_layouts GL_ARB_explicit_attrib_location GL_ARB_explicit_uniform_location GL_ARB_fragment_coord_conventions GL_ARB_fragment_layer_viewport GL_ARB_fragment_shader GL_ARB_framebuffer_no_attachments GL_ARB_framebuffer_object GL_ARB_framebuffer_sRGB GL_ARB_get_program_binary GL_ARB_get_texture_sub_image GL_ARB_gl_spirv GL_ARB_gpu_shader5 GL_ARB_gpu_shader_fp64 GL_ARB_gpu_shader_int64 GL_ARB_half_float_pixel GL_ARB_half_float_vertex GL_ARB_indirect_parameters GL_ARB_instanced_arrays GL_ARB_internalformat_query GL_ARB_internalformat_query2 GL_ARB_invalidate_subdata GL_ARB_map_buffer_alignment GL_ARB_map_buffer_range GL_ARB_multi_bind GL_ARB_multi_draw_indirect GL_ARB_occlusion_query2 GL_ARB_parallel_shader_compile GL_ARB_pipeline_statistics_query GL_ARB_pixel_buffer_object GL_ARB_point_sprite GL_ARB_polygon_offset_clamp GL_ARB_post_depth_coverage GL_ARB_program_interface_query GL_ARB_provoking_vertex GL
+
+2026/04/13 11:06:37,stdout, GL_3DFX_texture_compression_FXT1 GL_AMD_conservative_depth GL_AMD_draw_buffers_blend GL_AMD_gpu_shader_int64 GL_AMD_multi_draw_indirect GL_AMD_pinned_memory GL_AMD_query_buffer_object GL_AMD_seamless_cubemap_per_texture GL_AMD_shader_stencil_export GL_AMD_shader_trinary_minmax GL_AMD_texture_texture4 GL_AMD_vertex_shader_layer GL_AMD_vertex_shader_viewport_index GL_ANGLE_texture_compression_dxt3 GL_ANGLE_texture_compression_dxt5 GL_ARB_ES2_compatibility GL_ARB_ES3_1_compatibility GL_ARB_ES3_2_compatibility GL_ARB_ES3_compatibility GL_ARB_arrays_of_arrays GL_ARB_base_instance GL_ARB_blend_func_extended GL_ARB_buffer_storage GL_ARB_clear_buffer_object GL_ARB_clear_texture GL_ARB_clip_control GL_ARB_compressed_texture_pixel_storage GL_ARB_compute_shader GL_ARB_conditional_render_inverted GL_ARB_conservative_depth GL_ARB_copy_buffer GL_ARB_copy_image GL_ARB_cull_distance GL_ARB_debug_output GL_ARB_depth_buffer_float GL_ARB_depth_clamp GL_ARB_derivative_control GL_ARB_direct_state_access GL_ARB_draw_buffers GL_A
+
+2026/04/13 11:06:37,stdout,GLES:     0
+
+2026/04/13 11:06:37,stdout,Version:  4.5 (Core Profile) Mesa 25.0.7-2
+
+2026/04/13 11:06:37,stdout,Vendor:   Mesa
+
+2026/04/13 11:06:37,stdout,"Renderer: llvmpipe (LLVM 19.1.7, 128 bits)
+"
+2026/04/13 11:06:37,stdout,GfxDevice: creating device client; kGfxThreadingModeNonThreaded
+
+2026/04/13 11:06:37,stdout,[Subsystems] Discovering subsystems at path /home/steam/core-keeper-dedicated/CoreKeeperServer_Data/UnitySubsystems
+
+2026/04/13 11:06:37,stdout,Initialize engine version: 6000.0.59f2 (ef281c76c3c1)
+
+2026/04/13 11:06:35,stdout,Desktop is 1 x 1 @ 0 Hz
+
+2026/04/13 11:06:35,stdout,Unable to load player prefs
+
+2026/04/13 11:06:35,stdout,PlayerPrefs - Creating folder: /home/steam/.config/unity3d/Pugstorm/Core Keeper
+
+2026/04/13 11:06:35,stdout,PlayerPrefs - Creating folder: /home/steam/.config/unity3d/Pugstorm
+
+2026/04/13 11:06:35,stdout,Loading player data from /home/steam/core-keeper-dedicated/CoreKeeperServer_Data/data.unity3d
+
+2026/04/13 11:06:35,stdout,[Physics::Module] Id: 0xdecafbad
+
+2026/04/13 11:06:35,stdout,[Physics::Module] Initialized fallback backend.
+
+2026/04/13 11:06:35,stdout,Display 0 'screen': 1x1 (primary device).
+
+2026/04/13 11:06:35,stdout,Input System module state changed to: Initialized.
+
+2026/04/13 11:06:35,stdout,JobSystem: Clamping job-worker-count value 4 to 3
+
+2026/04/13 11:06:35,stdout,JobSystem: Invalid job-worker-count value 4 must be between 0->3
+
+2026/04/13 11:06:34,stdout,Mono config path = '/home/steam/core-keeper-dedicated/CoreKeeperServer_Data/MonoBleedingEdge/etc'
+
+2026/04/13 11:06:34,stdout,Mono path[0] = '/home/steam/core-keeper-dedicated/CoreKeeperServer_Data/Managed'
+
+2026/04/13 11:06:34,stdout,The selected window backend is x11 
+
+2026/04/13 11:06:34,stdout,    "memorysetup-temp-allocator-size-gfx=262144"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-temp-allocator-size-cloud-worker=32768"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-temp-allocator-size-audio-worker=65536"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-temp-allocator-size-nav-mesh-worker=65536"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-temp-allocator-size-preload-manager=262144"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-temp-allocator-size-job-worker=262144"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-temp-allocator-size-background-worker=32768"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-allocator-temp-initial-block-size-worker=262144"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-allocator-temp-initial-block-size-main=262144"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-job-temp-allocator-reduction-small-platforms=262144"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-job-temp-allocator-block-size-background=1048576"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-job-temp-allocator-block-size=2097152"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-temp-allocator-size-main=4194304"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-profiler-editor-allocator-block-size=1048576"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-profiler-allocator-block-size=16777216"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-profiler-bucket-allocator-block-count=1"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-profiler-bucket-allocator-block-size=4194304"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-profiler-bucket-allocator-bucket-count=8"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-profiler-bucket-allocator-granularity=16"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-typetree-allocator-block-size=2097152"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-cache-allocator-block-size=4194304"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-gfx-thread-allocator-block-size=16777216"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-gfx-main-allocator-block-size=16777216"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-thread-allocator-block-size=16777216"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-main-allocator-block-size=16777216"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-bucket-allocator-block-count=1"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-bucket-allocator-block-size=4194304"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-bucket-allocator-bucket-count=8"
+
+2026/04/13 11:06:34,stdout,    "memorysetup-bucket-allocator-granularity=16"
+
+2026/04/13 11:06:34,stdout,[UnityMemory] Configuration Parameters - Can be set up in boot.config
+
+2026/04/13 11:06:34,stdout,-batchmode -logfile /home/steam/core-keeper-dedicated/logs/2026-04-13_09-06-34.log -world 0 -worldname Yggdrasil -worldmode 0 -gameid rBhHrvTfq5Pggnv -datapath /home/steam/core-keeper-data -maxplayers 4 -password 12Ygg34!#
+
+2026/04/13 11:06:34,stdout,"[0m[0;37mMODS_ENABLED is not true, skipping mod installation[0m
+"
+2026/04/13 11:06:34,stdout,[0mUnloading Steam API...[0mOK
+
+2026/04/13 11:06:33,stdout,[0mError! App '1963720' state is 0x6 after update job.
+
+2026/04/13 11:06:33,stdout,"[0m Update state (0x0) unknown, progress: 0.00 (0 / 0)
+"
+2026/04/13 11:06:31,stdout,"[0m Update state (0x3) reconfiguring, progress: 0.00 (0 / 0)
+"
+2026/04/13 11:06:28,stdout,[0mSuccess! App '1007' fully installed.
+
+2026/04/13 11:06:28,stdout,"[0m Update state (0x0) unknown, progress: 0.00 (0 / 0)
+"
+2026/04/13 11:06:26,stdout,"[0m Update state (0x5) verifying install, progress: 49.01 (52884368 / 107911652)
+"
+2026/04/13 11:06:23,stdout,[0mWaiting for user info...[0mOK
+
+2026/04/13 11:06:21,stdout,[0mWaiting for client config...[0mOK
+
+2026/04/13 11:06:20,stdout,Connecting anonymously to Steam Public...[0mOK
+
+2026/04/13 11:06:17,stdout,
+
+2026/04/13 11:06:17,stdout,[0mIPC function call IClientAppManager::ForceInstallDirOverride took too long: 59 msec
+
+2026/04/13 11:06:16,stdout,[0m"@sSteamCmdForcePlatformBitness" = "64"
+
+2026/04/13 11:06:16,stdout,[0m"@sSteamCmdForcePlatformType" = "linux"
+
+2026/04/13 11:06:16,stdout,Loading Steam API...[0mOK
+
+2026/04/13 11:06:16,stdout,-- type 'quit' to exit --
+
+2026/04/13 11:06:16,stdout,Steam Console Client (c) Valve Corporation - version 1773426366
+
+2026/04/13 11:06:16,stdout,UpdateUI: skip show logo
+
+2026/04/13 11:06:16,stdout,[----] Verifying installation...
+
+2026/04/13 11:06:16,stdout,[  0%] Checking for available updates...
+
+2026/04/13 11:06:16,stdout,Logging directory: '/home/steam/Steam/logs'
+
+2026/04/13 11:06:16,stdout,Redirecting stderr to '/home/steam/Steam/logs/stderr.txt'
+
+2026/04/13 11:06:16,stderr,steamcmd.sh[27]: Restarting steamcmd by request...
+
+2026/04/13 11:06:16,stdout,UpdateUI: skip show logo
+
+2026/04/13 11:06:16,stdout,"[----] Update complete, launching Steamcmd...
+"
+2026/04/13 11:06:16,stdout,[----] Cleaning up...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[----] Extracting package...
+
+2026/04/13 11:06:16,stdout,[----] Extracting package...
+
+2026/04/13 11:06:16,stdout,[----] Extracting package...
+
+2026/04/13 11:06:16,stdout,[----] Extracting package...
+
+2026/04/13 11:06:16,stdout,[----] Installing update...
+
+2026/04/13 11:06:16,stdout,[100%] Download complete.
+
+2026/04/13 11:06:16,stdout,"[ 99%] Downloading update (36,338 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 96%] Downloading update (36,236 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 92%] Downloading update (34,972 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 88%] Downloading update (33,724 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 85%] Downloading update (32,332 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 82%] Downloading update (31,068 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 78%] Downloading update (29,820 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 74%] Downloading update (28,556 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 71%] Downloading update (27,164 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 66%] Downloading update (25,916 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 60%] Downloading update (24,290 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 52%] Downloading update (21,842 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 46%] Downloading update (19,218 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 39%] Downloading update (16,771 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 32%] Downloading update (14,275 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 23%] Downloading update (11,779 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[ 13%] Downloading update (8,649 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[  3%] Downloading update (4,921 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[  0%] Downloading update (1,196 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,"[----] Downloading update (0 of 36,338 KB)...
+"
+2026/04/13 11:06:16,stdout,[  0%] Checking for available updates...
+
+2026/04/13 11:06:16,stdout,Logging directory: '/home/steam/Steam/logs'
+
+2026/04/13 11:06:16,stdout,Redirecting stderr to '/home/steam/Steam/logs/stderr.txt'
+
+2026/04/13 11:06:06,stdout,[1;36mEXECUTING USERMOD[0m
+

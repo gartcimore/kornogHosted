@@ -10,3 +10,4 @@ services:
     env_file:
       - .env
       - core.secrets.env
+    mem_limit: 512m

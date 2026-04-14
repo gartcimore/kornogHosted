@@ -7,3 +7,4 @@ services:
       - "${VALKEY_PORT:-6379}:6379"
     volumes:
       - ${DATA_DIR}:/data
+    mem_limit: 64m

@@ -11,3 +11,4 @@ services:
       - speedtest.secrets.env
     volumes:
       - ${DATA_DIR}:/config
+    mem_limit: 128m

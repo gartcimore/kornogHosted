@@ -1,4 +1,2 @@
 librespeed.secrets.env
 .env
-data/*
-!data/.gitkeep

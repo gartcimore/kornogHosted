@@ -1,6 +1,2 @@
 acme.secrets.env
 .env
-acme-data/*
-!acme-data/.gitkeep
-certs/*
-!certs/.gitkeep

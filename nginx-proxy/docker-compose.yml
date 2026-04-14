@@ -11,3 +11,4 @@ services:
       - ${CERTS_DIR}:/etc/nginx/certs:ro
     env_file:
       - .env
+    mem_limit: 64m
