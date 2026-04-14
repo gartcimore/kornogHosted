@@ -16,11 +16,51 @@ This creates the `volumes/` tree (git-ignored) where each service stores its dat
 
 | Service | Description |
 |---------|-------------|
-| [postgres](postgres/) | Shared PostgreSQL instance for other services |
+| [acme](acme/) | Let's Encrypt certificates via acme.sh + OVH DNS-01 |
 | [core-keeper](core-keeper/) | Core Keeper dedicated game server |
-| [speedtest-tracker](speedtest-tracker/) | Speedtest Tracker with SQLite |
-| [librespeed](librespeed/) | LibreSpeed self-hosted speedtest |
 | [it-tools](it-tools/) | Developer utility tools collection |
+| [librespeed](librespeed/) | LibreSpeed self-hosted speedtest |
+| [postgres](postgres/) | Shared PostgreSQL instance for other services |
+| [speedtest-tracker](speedtest-tracker/) | Speedtest Tracker with SQLite |
+
+## Secrets management (git-secret)
+
+Secrets (`.env`, `*.secrets.env`) are encrypted with [git-secret](https://git-secret.io/) using GPG keys. The plaintext files are gitignored; only the `.secret` encrypted versions are committed.
+
+### Reveal secrets (after cloning or pulling)
+
+```bash
+git secret reveal
+```
+
+This decrypts all `.secret` files back to their plaintext versions. Requires your GPG key (YubiKey must be plugged in).
+
+### Encrypt after editing a secret
+
+```bash
+git secret hide
+git add -A
+git commit -m "update secrets"
+```
+
+### Add a new secret file
+
+```bash
+git secret add path/to/file.env
+git secret hide
+git add -A
+git commit -m "add new secret"
+```
+
+### Add a new team member
+
+```bash
+gpg --import their-public-key.gpg
+git secret tell their@email.com
+git secret hide
+git add -A
+git commit -m "re-encrypt secrets for new member"
+```
 
 ## Synology SSH quick access
 
