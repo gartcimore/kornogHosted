@@ -16,6 +16,7 @@ dirs=(
   postgres
   speedtest-tracker
   valkey
+  zigbee2mqtt
 )
 
 for d in "${dirs[@]}"; do

@@ -1,0 +1,14 @@
+services:
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:latest
+    container_name: zigbee2mqtt
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - ${Z2M_DATA_DIR}:/app/data
+    ports:
+      - "8099:8099"
+    mem_limit: 256m

@@ -22,6 +22,7 @@ This creates the `volumes/` tree (git-ignored) where each service stores its dat
 | [librespeed](librespeed/) | LibreSpeed self-hosted speedtest |
 | [postgres](postgres/) | Shared PostgreSQL instance for other services |
 | [speedtest-tracker](speedtest-tracker/) | Speedtest Tracker with SQLite |
+| [zigbee2mqtt](zigbee2mqtt/) | Zigbee2MQTT bridge (SLZB-MR3 coordinator over TCP) |
 
 ## Secrets management (git-secret)
 
