@@ -20,6 +20,12 @@ acme.sh --install-cert -d "${DOMAIN}" \
   --key-file "${CERT_DIR}/key.pem" \
   --fullchain-file "${CERT_DIR}/fullchain.pem"
 
+# Deploy to Synology DSM (also registers for auto-deploy on renewal)
+# SYNO_INSECURE=1 skips SSL verification (DSM uses self-signed cert on 5001)
+export SYNO_Insecure=1
+echo "Deploying cert to Synology DSM..."
+acme.sh --deploy -d "${DOMAIN}" --deploy-hook synology_dsm --insecure
+
 # Start the daemon (handles auto-renewal + re-deploy)
 echo "Starting acme.sh daemon..."
 exec crond -f
