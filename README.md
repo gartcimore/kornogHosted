@@ -135,8 +135,8 @@ A record with no matching Traefik router still resolves but returns a Traefik
 | `homarr.kornoglab.fr`      | yes |
 | `webhook.kornoglab.fr`     | yes (host-side webhook, basic-auth via token) |
 | `heimdall.kornoglab.fr`    | yes (Traefik dashboard, basic auth) |
-| `qbittorrent.kornoglab.fr` | not yet (path route only; qbit runs behind gluetun) |
-| `qbt.kornoglab.fr`         | alias for qbittorrent (same, not yet) |
+| `qbittorrent.kornoglab.fr` | yes (websecure route; qbit runs behind gluetun) |
+| `qbt.kornoglab.fr`         | yes (alias — same qbittorrent router) |
 
 To verify a record resolves from a client:
 
@@ -144,6 +144,21 @@ To verify a record resolves from a client:
 dig +short radarr.kornoglab.fr      # expect 192.168.0.20
 curl -I https://radarr.kornoglab.fr/   # expect a response + valid cert (no -k)
 ```
+
+### Device records (not behind heimdall's Traefik)
+
+A few names point at other hosts and are served by those devices directly, not
+through heimdall's Traefik:
+
+| Hostname | IP | Served by |
+|----------|----|-----------|
+| `ymir.kornoglab.fr` | `192.168.0.54` | Synology DSM itself. Set in DSM → Control Panel → Login Portal → DSM → "Customized domain", with the `*.kornoglab.fr` wildcard cert imported in DSM → Security → Certificate. Reachable at `https://ymir.kornoglab.fr:5001`. |
+| `drogo.kornoglab.fr` | `192.168.0.44` | the drogo NAS directly (same idea as ymir if it's a Synology). |
+| `ha.kornoglab.fr` | (via nginx-proxy) | **configured but NOT in use** — Home Assistant lives at `192.168.0.30:8123` and is currently reached via the old LAN name `homeassistant.becquerel`. The `nginx-proxy/` container has an `ha.conf` route but it was never adopted. To make it real, prefer DSM's Login Portal → Reverse Proxy over the nginx-proxy container. |
+
+So there are two patterns for a LAN hostname:
+- **Traefik-fronted** (`<service>.kornoglab.fr` → `192.168.0.20`): a container in the `parr` stack with Traefik labels. Add a UniFi A record + the router.
+- **Device-direct** (`ymir`/`drogo`): point the UniFi A record at the device's own IP and let the device serve itself (DSM customized-domain + imported wildcard cert). No Traefik involved.
 
 > **Note on `dnsmasq/`:** that service resolves `*.kornoglab.fr` to the Synology
 > (`192.168.0.54`) via nginx-proxy. It was never deployed and is **superseded**
