@@ -130,13 +130,13 @@ A record with no matching Traefik router still resolves but returns a Traefik
 | `bazarr.kornoglab.fr`      | yes |
 | `jellyfin.kornoglab.fr`    | yes |
 | `seerr.kornoglab.fr`       | yes |
-| `lidarr.kornoglab.fr`      | not yet (path route only) |
-| `prowlarr.kornoglab.fr`    | not yet (path route only) |
-| `homarr.kornoglab.fr`      | not yet (path route only) |
-| `qbittorrent.kornoglab.fr` | not yet (path route only) |
-| `qbt.kornoglab.fr`         | alias for qbittorrent |
-| `webhook.kornoglab.fr`     | not yet (webhook HTTPS pending) |
-| `heimdall.kornoglab.fr`    | not yet (intended: Traefik dashboard, with auth) |
+| `lidarr.kornoglab.fr`      | yes |
+| `prowlarr.kornoglab.fr`    | yes |
+| `homarr.kornoglab.fr`      | yes |
+| `webhook.kornoglab.fr`     | yes (host-side webhook, basic-auth via token) |
+| `heimdall.kornoglab.fr`    | yes (Traefik dashboard, basic auth) |
+| `qbittorrent.kornoglab.fr` | not yet (path route only; qbit runs behind gluetun) |
+| `qbt.kornoglab.fr`         | alias for qbittorrent (same, not yet) |
 
 To verify a record resolves from a client:
 
@@ -187,3 +187,79 @@ Restart Container Manager when ready:
 ```bash
 sudo synosystemctl start pkgctl-ContainerManager
 ```
+
+## Homarr MCP access from Kiro
+
+Homarr exposes an MCP endpoint at `/api/mcp` that Kiro can use to read and edit
+boards programmatically. Kiro refuses to load a remote MCP server unless it is
+reached over **HTTPS or `localhost`**, so the endpoint must be served with TLS.
+
+Homarr now has an HTTPS Traefik router at **`homarr.kornoglab.fr`** (wildcard
+`*.kornoglab.fr` cert), so Kiro connects directly — no tunnel needed.
+
+### Kiro MCP config
+
+In `~/.kiro/settings/mcp.json`, point the server at the HTTPS endpoint and
+authenticate with the **`ApiKey`** header (not `Authorization: Bearer` — Homarr's
+endpoint returns `unauthorized` otherwise and tells you to use `ApiKey`):
+
+```json
+"homarr": {
+  "url": "https://homarr.kornoglab.fr/api/mcp",
+  "headers": { "ApiKey": "${HOMARR_API_KEY}" },
+  "disabled": false
+}
+```
+
+Export the key where Kiro can read it:
+
+```bash
+export HOMARR_API_KEY="<homarr-api-key>"
+```
+
+Generate the key in Homarr: **Management → Tools → API** (admin only). The key is
+admin-capable (it can create users, stop containers, etc.), so keep it in the env
+var rather than inline, and rotate it if it leaks.
+
+Verify the endpoint resolves, presents a valid cert, and authenticates:
+
+```bash
+curl -sS https://homarr.kornoglab.fr/api/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -H "ApiKey: $HOMARR_API_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | head -c 200
+```
+
+> **Common pitfalls (all seen during setup):**
+> - **Path must be `/api/mcp`, not `/mcp`.** `/mcp` returns `404` and Kiro logs
+>   `SSE error: Non-200 status code (404)`.
+> - **Header is `ApiKey`.** `Authorization: Bearer` fails auth.
+> - **Invalid JSON** in `mcp.json` (e.g. a duplicate `mcpServers` object) makes
+>   the whole server silently fail to load.
+> - The wildcard cert's CA must be trusted by the Kiro host, or Kiro's MCP client
+>   rejects the TLS handshake. Test with `curl` **without** `-k`: if it validates
+>   (`ssl_verify_result=0`), Kiro will too.
+
+### Fallback: SSH tunnel (pre-HTTPS method)
+
+Before the HTTPS router existed, Homarr was only on `http://heimdall.becquerel:7575`,
+which Kiro rejects (`Remote MCP Servers must use https or localhost, ignoring`).
+The workaround was an SSH tunnel terminating on `localhost`. It is **superseded**
+by the HTTPS endpoint above, but kept here as a fallback if the router or cert
+breaks.
+
+A small idempotent helper lives at `~/.local/bin/homarr-tunnel` (on the Kiro
+host, not in this repo). It forwards `localhost:7575` → `heimdall:7575` over SSH:
+
+```bash
+HOMARR_SSH_USER=gart homarr-tunnel up      # start (verifies the endpoint answers)
+homarr-tunnel status                       # check tunnel + endpoint
+homarr-tunnel down                         # stop
+
+# under the hood:
+ssh -f -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+    -L 127.0.0.1:7575:localhost:7575 gart@heimdall.becquerel
+```
+
+With the tunnel up, the MCP config URL becomes `http://localhost:7575/api/mcp`
+(same `ApiKey` header).
