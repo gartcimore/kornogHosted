@@ -1,5 +1,12 @@
 # dnsmasq
 
+> **Status: superseded / never deployed.** LAN DNS for `*.kornoglab.fr` is now
+> handled by UniFi Local DNS records pointing at heimdall (`192.168.0.20`,
+> running Traefik) — see the "Local DNS for `*.kornoglab.fr` (UniFi)" section in
+> the repo root [README](../README.md). This dnsmasq setup (wildcard →
+> `192.168.0.54`) was a work-in-progress and is kept for reference only. Do not
+> set it as the DHCP DNS server unless deliberately switching strategies.
+
 Local DNS server that resolves `*.kornoglab.fr` to the Synology (`192.168.0.54`) and forwards everything else to the UniFi gateway (`192.168.0.1`).
 
 ## Setup
