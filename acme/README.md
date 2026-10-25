@@ -27,6 +27,16 @@ On first start, the entrypoint script will automatically issue the certificate v
 
 The `./certs/` directory can be mounted as a volume in other containers that need TLS (Home Assistant, Nginx, etc.).
 
+## Other hosts
+
+This container issues the `*.kornoglab.fr` **wildcard** for the services fronted
+by heimdall's Traefik and for Ymir's own DSM.
+
+**drogo** (a separate LAN-only Synology) gets its **own** single-name cert for
+`drogo.kornoglab.fr` instead — generated natively with acme.sh on drogo via OVH
+DNS-01, not deployed from here and not using the wildcard (kept independent on
+purpose). See [`drogo-cert.md`](drogo-cert.md) for the runbook.
+
 ## Files
 
 | File | Purpose |
