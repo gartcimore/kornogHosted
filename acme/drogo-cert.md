@@ -25,7 +25,7 @@ Task** (acme.sh's self-installed cron is unreliable on DSM).
   Recommended: a dedicated `acme-deploy` user. If it has 2FA, you also need its
   `SYNO_TOTP_SECRET`.
 - SSH enabled on drogo (Control Panel → Terminal & SNMP → Enable SSH).
-- OVH endpoint region: `__OVH_ENDPOINT__` (e.g. `ovh-eu`) — match your zone.
+- OVH endpoint region: `ovh-eu` (same as Ymir's acme).
 
 ## One-time setup (run on drogo as root)
 
@@ -52,7 +52,7 @@ source /root/.acme.sh/acme.sh.env   # or re-login
 
 # 3. OVH API credentials (DNS-01). These get saved into
 #    /root/.acme.sh/account.conf so renewals work unattended.
-export OVH_END_POINT="__OVH_ENDPOINT__"
+export OVH_END_POINT="ovh-eu"
 export OVH_AK="__OVH_APP_KEY__"
 export OVH_AS="__OVH_APP_SECRET__"
 export OVH_CK="__OVH_CONSUMER_KEY__"
