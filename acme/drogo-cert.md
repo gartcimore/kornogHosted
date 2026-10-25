@@ -35,11 +35,17 @@ sudo -i
 
 # 1. Install acme.sh natively (no Docker). Installs to /root/.acme.sh
 #    NOTE: DSM has no standard `crontab`, so the installer's pre-check fails
-#    ("cannot install"). Pass --force to skip acme.sh's own cron setup — we use
-#    a DSM Scheduled Task for renewal instead (see below). The `--` makes sh
-#    pass --force through to acme.sh.
-curl https://get.acme.sh | sh -s -- --force email=__YOUR_EMAIL__
+#    ("cannot install"). Pass --force (AT THE END, after email, no `--`
+#    separator — that mangles it to "----force") to skip acme.sh's self-cron;
+#    we use a DSM Scheduled Task for renewal instead (see below).
+curl https://get.acme.sh | sh -s email=__YOUR_EMAIL__ --force
 source /root/.acme.sh/acme.sh.env   # or re-login
+
+#    If the piped install still rejects the flag, use the two-step fallback:
+#      cd /tmp
+#      curl -sSL https://github.com/acmesh-official/acme.sh/archive/master.tar.gz | tar xz
+#      cd acme.sh-master
+#      ./acme.sh --install --force --accountemail __YOUR_EMAIL__
 
 # 2. Use Let's Encrypt (acme.sh defaults to ZeroSSL otherwise)
 /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt
