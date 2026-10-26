@@ -15,7 +15,24 @@ here; backends are plain HTTP on the LAN.
 
 ## Ports
 
-On the Synology host, DSM nginx already binds port 443 for QuickConnect, so this container exposes HTTPS on `${HTTPS_PORT}` (default `8443`). Forward `443 → 8443` at the router/firewall so external clients can keep using the standard port.
+On the Synology host, DSM nginx already binds port 443 for QuickConnect, so this
+container exposes HTTPS on `${HTTPS_PORT}` (currently **8553** in `.env`). To use
+clean `https://<name>.kornoglab.fr` URLs (no port) — e.g. for Homarr embeds or
+remote access — forward `443 → 8553` on the UniFi gateway. Otherwise reach
+services at `https://<name>.kornoglab.fr:8553`.
+
+## Synology Container Manager gotchas
+
+- **`CERTS_DIR` must be an ABSOLUTE path** in `.env` (e.g.
+  `/volume1/data/containers/volumes/acme/certs`). Container Manager does not
+  reliably resolve relative bind-mount paths (`../volumes/...`); a relative path
+  left `/etc/nginx/certs` empty, so nginx served a fallback cert with subject
+  `*` and clients got `certificate subject name '*' does not match`. Absolute
+  path fixes it.
+- After changing `.env` or a mount, **rebuild the project** in Container Manager
+  (Stop → Build/Run) — bind mounts are set at container creation, so an
+  `nginx -s reload` is not enough for mount changes. (A reload *is* enough for
+  adding/editing a `conf.d/*.conf` route, since those are already mounted.)
 
 ## Setup
 
