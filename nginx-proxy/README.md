@@ -1,29 +1,17 @@
-# Nginx Reverse Proxy
+# Nginx Reverse Proxy (Ymir-hosted services)
 
-> **Status: largely superseded / not in active use (Oct 2026).**
->
-> This container was an early attempt to reverse-proxy `kornoglab.fr` subdomains
-> from the Synology. Most of what it describes is no longer the live setup:
->
-> - **Media services** (`jellyfin`, `sonarr`, `radarr`, `seer`, etc.) are now
->   served by **Traefik on heimdall** (`192.168.0.20`) with the wildcard cert.
->   UniFi Local DNS points each `<service>.kornoglab.fr` at heimdall. The routes
->   listed below pointed at `heimdall.becquerel:80`, a hostname that **no longer
->   resolves** — they are dead. See the repo-root README "Local DNS" section and
->   the `parr` repo for the current media routing.
-> - **`ha.kornoglab.fr`** was configured here (→ Home Assistant at
->   `192.168.0.30:8123`) but **never put into real use** — Home Assistant is
->   still accessed via the old LAN name `homeassistant.becquerel`. If/when we
->   want `ha.kornoglab.fr` for real, the cleaner path is DSM's built-in
->   **Login Portal → Reverse Proxy** (+ the wildcard cert already imported in
->   DSM), which would let this nginx-proxy container be retired entirely.
->
-> Kept for reference until the `ha` route is either migrated to DSM reverse
-> proxy or dropped. Do not rely on the routes below as current.
+Reverse proxy, running on **Ymir**, that gives HTTPS `*.kornoglab.fr` hostnames
+to services **hosted on Ymir itself** (containers in this repo), using the
+wildcard cert from the `acme` container. TLS + WebSocket termination is handled
+here; backends are plain HTTP on the LAN.
 
----
-
-Nginx reverse proxy for `kornoglab.fr` subdomains with TLS termination using the wildcard cert from the `acme` container.
+> **Scope:** this proxies **Ymir-local** services only. Media services
+> (`jellyfin`, `sonarr`, `radarr`, `seerr`, `homarr`, qbit, webhook, the Traefik
+> dashboard...) are served by **Traefik on heimdall** (`192.168.0.20`) — their
+> `*.kornoglab.fr` UniFi DNS records point at heimdall, not here. Do not add
+> routes for heimdall services; they'd conflict. (The old `ha.conf` and
+> `heimdall.conf` — the latter pointing at the dead `heimdall.becquerel:80` —
+> were removed.)
 
 ## Ports
 
@@ -40,29 +28,28 @@ docker compose up -d
 
 ## Adding a new subdomain
 
-Create a new `.conf` file in `conf.d/` following the pattern in `ha.conf`, then reload:
+1. Add a UniFi Local DNS A record `<name>.kornoglab.fr → 192.168.0.54` (Ymir).
+2. Create a `conf.d/<name>.conf` following the pattern in `z2m.conf` (include the
+   WebSocket headers if the service needs them — the `$connection_upgrade` map is
+   defined in `nginx.conf`).
+3. Reload:
 
 ```bash
 docker compose exec nginx-proxy nginx -s reload
 ```
 
-## Routes (historical — see status note above)
+## Current routes
 
-| Subdomain | Backend | Current reality |
-|-----------|---------|-----------------|
-| `ha.kornoglab.fr` | Home Assistant (`192.168.0.30:8123`) | configured but unused (HA accessed via `homeassistant.becquerel`) |
-| `jellyfin.kornoglab.fr` | `heimdall.becquerel:80` | **dead** — now served by Traefik on heimdall |
-| `sonarr.kornoglab.fr` | `heimdall.becquerel:80` | **dead** — now served by Traefik on heimdall |
-| `radarr.kornoglab.fr` | `heimdall.becquerel:80` | **dead** — now served by Traefik on heimdall |
-| `seer.kornoglab.fr` | `heimdall.becquerel:80` | **dead** — now served by Traefik on heimdall |
+| Subdomain | Backend | Notes |
+|-----------|---------|-------|
+| `z2m.kornoglab.fr` | Zigbee2MQTT (`192.168.0.54:8099`) | WebSocket enabled (live view/logs) |
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `docker-compose.yml` | Service definition |
-| `nginx.conf` | Main Nginx config (TLS, WebSocket) |
-| `conf.d/ha.conf` | Home Assistant reverse proxy (unused) |
-| `conf.d/heimdall.conf` | Media services pointing at the dead `heimdall.becquerel:80` (superseded by Traefik) |
+| `nginx.conf` | Main Nginx config (TLS, WebSocket map) |
+| `conf.d/z2m.conf` | Zigbee2MQTT reverse proxy |
 | `.env` | Certs path and external port (gitignored) |
 | `.env.sample` | Template for `.env` |
