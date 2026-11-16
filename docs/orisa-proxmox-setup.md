@@ -18,9 +18,13 @@ Status legend: [x] done, [ ] to do.
 - [x] Step 9.1-9.2: `data` share mounted on host at `/mnt/dataYmir` (NFSv3, no squash, real UIDs visible). Guest bind mounts and id-map pending.
 - [x] Step 7: Discord notifications working; SMART baseline OK (NVMe 0% used, about 41 C idle).
 
+Fixed addresses (host and guests) are tracked in [ip-inventory.md](ip-inventory.md).
+
+- [x] Step 8 (`rproxy`): LXC 121 at `192.168.0.21` (Debian 13, unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB). Wildcard cert bind-mounted read-only at `/certs` from the host's `/mnt/dataYmir/containers/volumes/acme/certs`. Docker CE installed. Traefik (file provider only, config in `rproxy/`, deployed to `/opt/rproxy`) tested with `curl --resolve` against heimdall routes: valid cert, HTTP redirects to HTTPS. DNS still points at heimdall.
+
 ### Where we stopped / next
 
-1. Step 8: create the `edge` LXC (Traefik). Choose and reserve its IP in UniFi (example `192.168.0.21`, VMID `121`), download a Debian 13 template (`pveam update`, `pveam available --section system | grep -i debian`), then `pct create` (unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB, SSH key injected, start at boot order 1).
+1. Step 8: create the `rproxy` LXC (Traefik). Choose and reserve its IP in UniFi (example `192.168.0.21`, VMID `121`), download a Debian 13 template (`pveam update`, `pveam available --section system | grep -i debian`), then `pct create` (unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB, SSH key injected, start at boot order 1).
 2. Add the nightly backup job (Datacenter > Backup, storage `ymir-backup`) and test a restore.
 3. Build the `jellyfin` and `arr` guests, with the iGPU, `/dev/net/tun` and the `/mnt/dataYmir` bind mount plus UID 1000 id-map.
 4. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), quota/size check on `proxmox-backup`.
@@ -212,7 +216,9 @@ Disk layout on a single 512 GB drive: `local` (ISOs, templates, backups) and `lo
 - [ ] On Ymir (DSM > Control Panel > Shared Folder > NFS Permissions) allow `192.168.0.12`. Create a dedicated share/folder, e.g. `proxmox-backup`. See the README note about Synology POSIX bits on NFS.
 - [ ] Datacenter > Storage > Add > NFS: server `192.168.0.54`, export path, content **VZDump backup** only.
 - [ ] Datacenter > Backup: nightly job, all guests, mode `snapshot`, zstd, retention e.g. keep-daily 7, keep-weekly 4, keep-monthly 3.
-- [ ] Test a restore of one guest. An untested backup does not count.
+- [x] Backing up an **unprivileged** LXC to the NFS share failed with `tar: ...vzdump-lxc-121-....tmp: Cannot open: Permission denied`. vzdump runs `tar` as UID 100000 inside the user namespace and the temp folder it creates on the share belongs to root (the NFS rule has no root squash). Fix: `echo 'tmpdir: /var/tmp' >> /etc/vzdump.conf`, so the temp files stay on the local disk. Bind mounts (`/certs`) are excluded from backups, as expected.
+- [x] Restore tested (2026-11-16): `rproxy` archive (1.4 GiB read) restored as CT 199 from the node's `ymir-backup` > Backups tab, config matches the original. Nightly job runs at 02:00 on `ymir-backup`, all guests, retention keep-daily 7 / weekly 4 / monthly 3.
+- Restore procedure: restore to a spare VMID (e.g. `199`) with "Start after restore" unticked, because the copy has the same static IP as the original. Remove it afterwards.
 - [ ] Back up host config too: `/etc/pve` is in the cluster database (not in vzdump). Copy it with a cron job or `tar` to Ymir, plus `/etc/network/interfaces`, `/etc/fstab`, `/etc/ssh/sshd_config.d/`.
 
 ---
@@ -243,7 +249,7 @@ Why B: the *arr apps, qBittorrent and Seerr talk to each other by container name
 
 | Guest | Type | Contents | Why separate |
 |---|---|---|---|
-| `edge` | Debian LXC, 1 core, 512 MB | Traefik only, with the wildcard cert | Single entry point, stable IP, rarely changes. Other guests can be rebuilt without touching TLS. |
+| `rproxy` | Debian LXC, 1 core, 512 MB | Traefik only, with the wildcard cert | Single entry point, stable IP, rarely changes. Other guests can be rebuilt without touching TLS. |
 | `jellyfin` | Debian LXC | Jellyfin only, iGPU passthrough | The only service needing `/dev/dri`. Heavy CPU/RAM use during transcodes, so it gets its own limits. Users see it most, so keeping it independent of the *arr churn helps. |
 | `arr` | Debian LXC | Sonarr, Radarr, Lidarr, Bazarr, Prowlarr, qBittorrent + gluetun, Seerr, Homarr, Calibre-web | Tightly coupled apps, one compose file, one `/data` mount (hardlinks need a single filesystem). gluetun needs `/dev/net/tun`. |
 | `services` | Debian LXC or VM | Stack from `kornogHosted` (postgres, valkey, zigbee2mqtt, speedtest, it-tools, infisical, ...) | Different lifecycle from media. |
@@ -253,10 +259,10 @@ If you later want finer isolation, split out qBittorrent + gluetun first (VPN fa
 
 ### Traefik routing across guests
 
-Today Traefik finds containers through the Docker provider (labels, via `socket-proxy`) on the shared `traefik` network. That only works for containers on the same Docker host. Your Traefik already enables the **file provider** (`--providers.file.directory=/etc/traefik/dynamic`, used for `dashboard-auth.yml` and `webhook.yml`), so the fix needs no new Traefik feature: one `edge` Traefik, with routes to the other guests declared as files.
+Today Traefik finds containers through the Docker provider (labels, via `socket-proxy`) on the shared `traefik` network. That only works for containers on the same Docker host. Your Traefik already enables the **file provider** (`--providers.file.directory=/etc/traefik/dynamic`, used for `dashboard-auth.yml` and `webhook.yml`), so the fix needs no new Traefik feature: one `rproxy` Traefik, with routes to the other guests declared as files.
 
 ```
-client -> UniFi DNS: *.kornoglab.fr -> edge LXC IP -> Traefik :443 (wildcard cert)
+client -> UniFi DNS: *.kornoglab.fr -> rproxy LXC IP -> Traefik :443 (wildcard cert)
        -> file-provider route -> http://<guest-ip>:<port>
 ```
 
@@ -283,13 +289,13 @@ http:
 
 Rules to keep it working:
 - **Give each guest a fixed IP** (static in the LXC network config plus a UniFi reservation). The file provider needs addresses that never change. Use IPs, not `.kornoglab.fr` names, to avoid a DNS loop through Traefik.
-- **Publish app ports on the guest** (`ports: 7878:7878` is already in your compose). Traefik reaches them over the LAN, so keep each guest's firewall/Proxmox firewall limited to the edge IP for those ports if you want to enforce that.
+- **Publish app ports on the guest** (`ports: 7878:7878` is already in your compose). Traefik reaches them over the LAN, so keep each guest's firewall/Proxmox firewall limited to the rproxy IP for those ports if you want to enforce that.
 - **Drop the `traefik` Docker network and docker labels** for apps that moved. Labels on a different host are ignored. You can keep labels for any service that stays on the same host as Traefik. Both providers run side by side.
-- **`socket-proxy` is no longer needed** on `edge` if every route is a file route. Remove it to cut the attack surface.
-- **DNS:** all the existing UniFi A records stay pointing at the `edge` IP. Nothing changes for clients, whatever number of guests sit behind it.
+- **`socket-proxy` is no longer needed** on `rproxy` if every route is a file route. Remove it to cut the attack surface.
+- **DNS:** all the existing UniFi A records stay pointing at the `rproxy` IP. Nothing changes for clients, whatever number of guests sit behind it.
 - **Cross-app addresses** inside the apps (Radarr's download client host, Prowlarr's apps, Seerr's servers) change from `qbittorrent` / `radarr` to the guest's IP, only when the two apps ended up on different guests. With layout B the only cross-guest links are Seerr/Homarr -> Jellyfin, and the Jellyfin mount. Those are few.
 - **Generated config:** `parr/generate-arr-configs.sh` and the `webhook` route reference the old layout. Check them before cutting over.
-- **High availability is not a goal here**: `edge` is a single point of failure for all hostnames, as heimdall is today. Snapshot it before changes. It is a tiny guest and restores in seconds.
+- **High availability is not a goal here**: `rproxy` is a single point of failure for all hostnames, as heimdall is today. Snapshot it before changes. It is a tiny guest and restores in seconds.
 
 Proxmox does not officially support Docker inside LXC, and an update to Proxmox or the kernel can break it. In practice it works with `nesting` and `keyctl`. If you want the supported path, use a Debian VM with Docker instead, and accept no iGPU transcoding.
 
@@ -383,7 +389,7 @@ Keep the **same path inside every guest** (`/mnt/dataYmir`), so compose files (`
 
 Mount read-only where write is not needed. Jellyfin only reads media: `mp0: /mnt/dataYmir,mp=/mnt/dataYmir,ro=1`. Its config stays on the guest disk.
 
-Mount-ordering: start NFS-dependent guests after the host has mounted the share, which `_netdev` handles at boot, and give them a start delay as a safety net (guest Options > Start/Shutdown order, e.g. `edge` order 1, `arr` and `jellyfin` order 2 with a 30 s delay). Proxmox does not include bind mounts (host-path `mp` entries) in vzdump backups, so the NAS data is not copied into guest backups. Verify with one backup's size.
+Mount-ordering: start NFS-dependent guests after the host has mounted the share, which `_netdev` handles at boot, and give them a start delay as a safety net (guest Options > Start/Shutdown order, e.g. `rproxy` order 1, `arr` and `jellyfin` order 2 with a 30 s delay). Proxmox does not include bind mounts (host-path `mp` entries) in vzdump backups, so the NAS data is not copied into guest backups. Verify with one backup's size.
 
 ### 9.4 UID/GID mapping
 
@@ -420,12 +426,12 @@ Add a check that alerts when the mount is missing (a `findmnt /mnt/dataYmir || n
 
 heimdall keeps running until the new stack is verified.
 
-1. Build the guests (`edge`, `jellyfin`, `arr`) and confirm Docker, `/dev/dri` (jellyfin), `/dev/net/tun` (arr), NFS mount and UID mapping in each.
+1. Build the guests (`rproxy`, `jellyfin`, `arr`) and confirm Docker, `/dev/dri` (jellyfin), `/dev/net/tun` (arr), NFS mount and UID mapping in each.
 2. Stop heimdall's stack briefly and copy `DOCKER_CONFIG_DIR` (the *arr, Jellyfin, qBittorrent, Homarr configs) to the LXC. Back them up first (the repo has `parr/backup.sh`). Never run both qBittorrent/gluetun instances with the same VPN account at once.
 3. Check the `acme` certs path: Traefik reads `/mnt/dataYmir/containers/volumes/acme/certs`. Keep that NFS mount at the same path in the LXC.
 4. Start the stack on orisa. Fix path differences that show in the *arr health pages (root folders, download client host).
-5. Test one hostname without touching DNS: `curl --resolve radarr.kornoglab.fr:443:<edge-IP> https://radarr.kornoglab.fr/`.
-6. Switch the UniFi A records from `192.168.0.20` to the `edge` IP (`192.168.0.x`, reserve it). Update the README table and the records list.
+5. Test one hostname without touching DNS: `curl --resolve radarr.kornoglab.fr:443:<rproxy-IP> https://radarr.kornoglab.fr/`.
+6. Switch the UniFi A records from `192.168.0.20` to the `rproxy` IP (`192.168.0.x`, reserve it). Update the README table and the records list.
 7. Run for a week. Then shut heimdall's stack down, keep its SD card/disk image as a fallback, and later reuse it.
 
 Rollback: change the A records back to `192.168.0.20` and restart the stack on heimdall.
@@ -442,7 +448,7 @@ Rollback: change the A records back to `192.168.0.20` and restart the stack on h
 - [ ] NFS backup storage, nightly job, one restore tested
 - [ ] Notifications working (send a test)
 - [ ] Host config backed up
-- [ ] `edge`, `jellyfin`, `arr` guests with fixed IPs; iGPU, tun and NFS working; Traefik file routes in place; Jellyfin hardware transcoding confirmed in the playback log
+- [ ] `rproxy`, `jellyfin`, `arr` guests with fixed IPs; iGPU, tun and NFS working; Traefik file routes in place; Jellyfin hardware transcoding confirmed in the playback log
 - [ ] Migration cut over and heimdall retired
 
 ## References

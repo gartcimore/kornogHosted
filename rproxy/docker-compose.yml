@@ -1,0 +1,28 @@
+services:
+  traefik:
+    image: traefik:v3
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      # Routes are declared as files only. No Docker provider and no Docker
+      # socket mount, so a compromise of Traefik cannot control Docker.
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      # Drop request headers with aliasing names (X_Foo, X.Foo) so a client
+      # cannot spoof headers Traefik manages. Default is "keep" (Traefik 3.7+).
+      - --entrypoints.web.http.aliasHeadersStrategy=delete
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.aliasHeadersStrategy=delete
+      - --log.level=INFO
+      - --accesslog=true
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      # Wildcard cert from the acme container, bind-mounted read-only from
+      # orisa (/mnt/dataYmir/containers/volumes/acme/certs, NFS on Ymir).
+      - /certs:/certs:ro

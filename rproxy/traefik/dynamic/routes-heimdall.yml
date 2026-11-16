@@ -1,0 +1,28 @@
+# Temporary routes to the services still running on heimdall (192.168.0.20).
+# They let us test rproxy before any DNS record moves:
+#   curl --resolve radarr.kornoglab.fr:443:192.168.0.21 https://radarr.kornoglab.fr/
+# When a service moves to its new guest, change its URL to that guest's IP.
+# The file provider does not expand variables, so the domain is written out.
+
+http:
+  routers:
+    radarr:
+      rule: Host(`radarr.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: radarr
+    jellyfin:
+      rule: Host(`jellyfin.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: jellyfin
+
+  services:
+    radarr:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.20:7878
+    jellyfin:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.20:8096
