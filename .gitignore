@@ -1,3 +1,5 @@
 volumes/
 .gitsecret/keys/random_seed
 !*.secret
+# Plaintext secrets; the encrypted arr/.env.secret is what gets committed (git-secret).
+arr/.env

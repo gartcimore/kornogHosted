@@ -1,0 +1,14 @@
+# Guest-specific changes to the `parr` stack. Compose loads this file
+# automatically next to parr's docker-compose.yml (/opt/parr/ in the arr guest),
+# so parr itself needs no change and heimdall keeps running it as is.
+services:
+  # Routing is done by rproxy (192.168.0.21) with file routes to this guest.
+  # A profile that is never enabled keeps these two out of the stack.
+  traefik:
+    profiles: ["off"]
+  socket-proxy:
+    profiles: ["off"]
+
+  # The 2 CPU cap protects the Raspberry Pi. The guest has 4 cores.
+  calibre-web-automated:
+    cpus: 3.0

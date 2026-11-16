@@ -3,6 +3,7 @@ docker_host_base_packages:
   - ca-certificates
   - curl
   - gnupg
+  - git
   - vim
 
 docker_host_packages:

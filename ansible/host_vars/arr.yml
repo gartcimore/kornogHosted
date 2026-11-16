@@ -1,0 +1,46 @@
+---
+# Guest definition, read by the lxc_guest role on orisa. It is applied only
+# when the guest is created. Changing it later does not modify a running guest.
+# Plan and rationale: docs/arr-guest-plan.md
+lxc:
+  vmid: 123
+  ip: 192.168.0.23
+  cores: 4
+  memory: 6144
+  swap: 512
+  disk_gb: 24
+  startup_order: 3
+  pct_options:
+    # gluetun (VPN) needs the tun device.
+    dev0: /dev/net/tun
+    # Ymir data share (NFS) and drogo (SMB), both read-write. They are mounted
+    # on the host; see group_vars/proxmox.yml.
+    mp0: /mnt/dataYmir,mp=/mnt/dataYmir
+    mp1: /mnt/dataDrogo,mp=/mnt/dataDrogo
+  # Guest UID/GID 1000 is host 1000, so files written to the shares are owned by
+  # 1000:1000 like on heimdall. Needs "root:1000:1" in the host's /etc/subuid and
+  # /etc/subgid (proxmox_host role).
+  raw_config:
+    - "lxc.idmap: u 0 100000 1000"
+    - "lxc.idmap: g 0 100000 1000"
+    - "lxc.idmap: u 1000 1000 1"
+    - "lxc.idmap: g 1000 1000 1"
+    - "lxc.idmap: u 1001 101001 64535"
+    - "lxc.idmap: g 1001 101001 64535"
+
+ansible_host: "{{ lxc.ip }}"
+
+# The parr stack at a pinned commit, plus this repo's guest-specific files.
+# arr/.env is encrypted with git-secret; reveal it before running the playbook
+# (git secret reveal). It is copied with mode 0600.
+compose_stacks:
+  - name: parr
+    repo: https://github.com/gartcimore/parr.git
+    version: f31e9d7af0f178f27e48fb2543f3fce8769baf58
+    systemd_unit: arr
+    files:
+      - src: "{{ playbook_dir }}/../arr/docker-compose.override.yml"
+        dest: docker-compose.override.yml
+      - src: "{{ playbook_dir }}/../arr/.env"
+        dest: .env
+        mode: "0600"

@@ -55,6 +55,16 @@
     opts: "{{ nfs_data.opts }}"
     state: mounted
 
+# --- Unprivileged guests that map UID/GID 1000 to the host's 1000 --------------------
+- name: Allow root to map UID/GID 1000 into guests
+  ansible.builtin.lineinfile:
+    path: "{{ item }}"
+    line: "root:1000:1"
+    regexp: '^root:1000:'
+  loop:
+    - /etc/subuid
+    - /etc/subgid
+
 # --- SMB shares (drogo) ------------------------------------------------------------
 - name: Read SMB credentials file status
   ansible.builtin.stat:

@@ -1,0 +1,19 @@
+# Managed by Ansible (role compose_stack). Runs `docker compose up` in the
+# stack directory and restarts it slowly: gluetun can need several seconds to
+# find a working VPN server and qbittorrent waits for it to be healthy.
+[Unit]
+Description={{ item.name }} stack
+Requires=docker.service
+After=docker.service network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Restart=always
+RestartSec=20
+WorkingDirectory={{ item.dest | default('/opt/' ~ item.name) }}
+ExecStart=/usr/bin/docker compose up
+ExecStop=/usr/bin/docker compose down
+
+[Install]
+WantedBy=default.target

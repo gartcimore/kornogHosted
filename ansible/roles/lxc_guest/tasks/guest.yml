@@ -60,6 +60,15 @@
   when: lxc_guest_status.rc != 0
   changed_when: true
 
+- name: "Add raw LXC settings to {{ lxc_guest_name }}"
+  ansible.builtin.lineinfile:
+    path: "/etc/pve/lxc/{{ lxc_guest_def.vmid }}.conf"
+    line: "{{ item }}"
+    unsafe_writes: true  # /etc/pve is a FUSE filesystem, no atomic rename
+  loop: "{{ lxc_guest_def.raw_config | default([]) }}"
+  # A dry run does not create the guest, so there is no config file to edit yet.
+  when: lxc_guest_status.rc != 0 and not ansible_check_mode
+
 - name: "Read the state of {{ lxc_guest_name }}"
   ansible.builtin.command: pct status {{ lxc_guest_def.vmid | quote }}
   register: lxc_guest_state

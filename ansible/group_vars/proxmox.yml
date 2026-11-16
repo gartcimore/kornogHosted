@@ -21,14 +21,17 @@ nfs_data:
 
 # SMB shares mounted on the host and bind-mounted into guests. The credentials
 # file is created by hand (root, mode 0600) and is never stored in this repo.
-# uid/gid 101000 is the unprivileged guests' UID/GID 1000 (100000 + 1000), so
-# Jellyfin (PUID 1000) can read the files. Permanent mount on purpose: an idle
-# unmount under a bind mount desyncs the guest.
+# Read-write and owned by 1000 (mode 0775/0664): the arr guest, whose UID 1000 is
+# host 1000, writes to it. The jellyfin guest (UID 1000 is host 101000) reads
+# through the "other" bits and keeps its bind mount read-only (ro=1).
+# Permanent mount on purpose: an idle unmount under a bind mount desyncs the guest.
+# Changing the options needs `umount` + `mount` (and a restart of the guests that
+# use it), a remount does not change the owner.
 cifs_mounts:
   - src: //192.168.0.44/data
     path: /mnt/dataDrogo
     credentials: /root/.smb-drogo
-    opts: vers=3.0,ro,nofail,_netdev,iocharset=utf8,nodev,nosuid,uid=101000,gid=101000,dir_mode=0550,file_mode=0440
+    opts: vers=3.0,nofail,_netdev,iocharset=utf8,nodev,nosuid,uid=1000,gid=1000,dir_mode=0775,file_mode=0664
 
 # NFS storage used by vzdump backups.
 backup_storage:

@@ -1,29 +1,87 @@
 ---
-# Copies each stack in `compose_stacks` to /opt/<name> and starts it.
+# Deploys each stack in `compose_stacks`. A stack has:
+#   name          directory name under /opt (unless dest is set)
+#   src           local directory copied to the guest, or
+#   repo, version git repository cloned to the guest (pin version to a commit)
+#   dest          target directory, default /opt/<name>
+#   files         extra files: src, dest (relative to the stack directory), mode
+#   systemd_unit  unit name that runs `docker compose up` and starts at boot;
+#                 without it the stack is started with `docker compose up -d`
 - name: Stack directory
   ansible.builtin.file:
-    path: "/opt/{{ item.name }}"
+    path: "{{ item.dest | default('/opt/' ~ item.name) }}"
     state: directory
     mode: "0755"
   loop: "{{ compose_stacks | default([]) }}"
   loop_control:
     label: "{{ item.name }}"
 
-- name: Stack files
-  ansible.builtin.copy:
-    src: "{{ item.src }}/"
-    dest: "/opt/{{ item.name }}/"
-    mode: "0644"
-    directory_mode: "0755"
-  loop: "{{ compose_stacks | default([]) }}"
+- name: Stack repository
+  ansible.builtin.git:
+    repo: "{{ item.repo }}"
+    dest: "{{ item.dest | default('/opt/' ~ item.name) }}"
+    version: "{{ item.version | default('main') }}"
+  loop: "{{ compose_stacks | default([]) | selectattr('repo', 'defined') | list }}"
   loop_control:
     label: "{{ item.name }}"
+  register: compose_stack_repo
+
+- name: Stack files from a local directory
+  ansible.builtin.copy:
+    src: "{{ item.src }}/"
+    dest: "{{ item.dest | default('/opt/' ~ item.name) }}/"
+    mode: "0644"
+    directory_mode: "0755"
+  loop: "{{ compose_stacks | default([]) | selectattr('src', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: compose_stack_local
+
+# diff is off: some of these files hold secrets (.env).
+- name: Extra stack files
+  ansible.builtin.copy:
+    src: "{{ item.1.src }}"
+    dest: "{{ item.0.dest | default('/opt/' ~ item.0.name) }}/{{ item.1.dest }}"
+    mode: "{{ item.1.mode | default('0644') }}"
+  loop: "{{ compose_stacks | default([]) | subelements('files', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }}/{{ item.1.dest }}"
+  diff: false
+  register: compose_stack_files
+
+- name: Systemd unit for the stack
+  ansible.builtin.template:
+    src: stack.service.j2
+    dest: "/etc/systemd/system/{{ item.systemd_unit }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ compose_stacks | default([]) | selectattr('systemd_unit', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.systemd_unit }}"
+  register: compose_stack_units
+
+# Not a handler: the unit must be known to systemd before the task below starts it.
+- name: Reload systemd after a unit change  # noqa: no-handler
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  when: compose_stack_units is changed
+
+# Restarts the stack when its repository or files changed, so changes apply.
+- name: Stack unit enabled and running
+  ansible.builtin.systemd_service:
+    name: "{{ item.systemd_unit }}"
+    enabled: true
+    state: "{{ 'restarted' if (compose_stack_repo is changed or compose_stack_files is changed or compose_stack_units is changed) else 'started' }}"
+  loop: "{{ compose_stacks | default([]) | selectattr('systemd_unit', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.systemd_unit }}"
 
 - name: Stack is up
   community.docker.docker_compose_v2:
-    project_src: "/opt/{{ item.name }}"
+    project_src: "{{ item.dest | default('/opt/' ~ item.name) }}"
     state: present
     pull: missing
-  loop: "{{ compose_stacks | default([]) }}"
+  loop: "{{ compose_stacks | default([]) | rejectattr('systemd_unit', 'defined') | list }}"
   loop_control:
     label: "{{ item.name }}"
