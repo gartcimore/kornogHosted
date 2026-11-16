@@ -12,8 +12,11 @@ lxc:
   pct_options:
     # Media from Ymir, read-only. World-readable, so no id-map is needed.
     mp0: /mnt/dataYmir/media,mp=/mnt/dataYmir/media,ro=1
-    # iGPU render node. gid is the host's `render` group (getent group render).
-    dev0: /dev/dri/renderD128,gid=993
+    # iGPU render node. The gid is the group owning the node inside the guest.
+    # It must be the gid Jellyfin's ffmpeg runs with: the linuxserver image runs
+    # it as `abc` (PUID/PGID 1000) and does not add it to the `render` group, so
+    # gid=993 (the host's render group) gives "Failed to open the given device".
+    dev0: /dev/dri/renderD128,gid=1000
 
 ansible_host: "{{ lxc.ip }}"
 
