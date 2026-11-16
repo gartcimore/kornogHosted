@@ -1,0 +1,17 @@
+# Jellyfin runs in its own LXC guest (CT 122, see ansible/host_vars/jellyfin.yml).
+# The file provider does not expand variables, so the domain is written out.
+# After editing, `ansible-playbook site.yml --limit rproxy --tags stacks` deploys it.
+
+http:
+  routers:
+    jellyfin:
+      rule: Host(`jellyfin.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: jellyfin
+
+  services:
+    jellyfin:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.22:8096

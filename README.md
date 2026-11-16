@@ -121,14 +121,14 @@ of the same change:
 A record with no matching Traefik router still resolves but returns a Traefik
 404 — harmless, so records may be created ahead of the router.
 
-### Current records (all → `192.168.0.20`)
+### Current records (all → `192.168.0.20` unless noted)
 
 | Hostname | Traefik HTTPS router exists? |
 |----------|------------------------------|
 | `radarr.kornoglab.fr`      | yes |
 | `sonarr.kornoglab.fr`      | yes |
 | `bazarr.kornoglab.fr`      | yes |
-| `jellyfin.kornoglab.fr`    | yes |
+| `jellyfin.kornoglab.fr`    | **moved:** → `192.168.0.21` (`rproxy` on orisa, see `rproxy/`), which forwards to the Jellyfin guest `192.168.0.22:8096` |
 | `seerr.kornoglab.fr`       | yes |
 | `lidarr.kornoglab.fr`      | yes |
 | `prowlarr.kornoglab.fr`    | yes |

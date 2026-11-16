@@ -29,11 +29,10 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 
 ### Where we stopped / next
 
-1. `jellyfin` migration: mount drogo (CIFS, `//192.168.0.44/data`) on orisa, then copy heimdall's `/docker/appdata/jellyfin` into `/srv/jellyfin/config` in CT 122, then switch the `jellyfin.kornoglab.fr` route in `rproxy/traefik/dynamic/` and its UniFi A record to `.21`.
-   - drogo mount: permanent CIFS mount on the host with `uid=101000,gid=101000,ro,dir_mode=0550,file_mode=0440` (101000 is the guest's UID 1000), credentials file outside git (`/root/.smb-drogo`, mode 0600), bind-mounted at `/mediaDrogo`. Do not use `x-systemd.automount` (idle unmount desyncs bind mounts).
-   - Old library paths in the Jellyfin database are `/mediaYmir` and `/mediaDrogo`; keep these container paths.
-   - Do not scan libraries before `/mediaDrogo` exists.
-2. Build the `arr` guest (`/dev/net/tun`, `/mnt/dataYmir` read-write, UID 1000 id-map, `root:1000:1` in `/etc/subuid` and `/etc/subgid`) and `services`.
+1. `jellyfin` is migrated (2026-11-16): drogo mounted on the host (CIFS, read-only, mapped to the guest's UID 1000) and bind-mounted into CT 122, heimdall's 4.4 GB config copied with `tar` over SSH (VAAPI `encoding.xml` kept from the fresh install), route in `rproxy/traefik/dynamic/routes-jellyfin.yml`, UniFi record `jellyfin.kornoglab.fr` -> `192.168.0.21`, Seerr/Radarr/Sonarr/Homarr re-pointed. heimdall's container is stopped and kept for rollback (remove it from the `parr` compose, then `docker rm` after about a week). To do: set Known proxies to `192.168.0.21` in Jellyfin (Dashboard > Networking) if not done.
+   - Rollback: point the UniFi record back to `192.168.0.20` and `docker start jellyfin` on heimdall.
+   - Library paths in the Jellyfin database are `/mediaYmir` and `/mediaDrogo`; keep these container paths.
+2. Next: build the `arr` guest (`/dev/net/tun`, `/mnt/dataYmir` read-write, UID 1000 id-map, `root:1000:1` in `/etc/subuid` and `/etc/subgid`) and `services`.
 3. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
 
 > Commands marked `# host` run in a shell on orisa (web UI Shell, console or SSH). Check your version first with `pveversion`. Proxmox VE 8 (Debian 12) and 9 (Debian 13) differ in apt source file format (see step 1).
