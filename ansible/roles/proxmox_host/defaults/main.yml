@@ -8,6 +8,7 @@ proxmox_host_packages:
   - smartmontools
   - lm-sensors
   - nfs-common
+  - cifs-utils
   - ethtool
 
 # vzdump writes temp files here. Needed so unprivileged LXC backups to NFS

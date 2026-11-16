@@ -15,7 +15,8 @@ services:
       # Jellyfin database stay valid. Read-only: Jellyfin cannot write NFO files
       # or artwork next to the media.
       - /mnt/dataYmir/media:/mediaYmir:ro
-      # TODO /mediaDrogo (drogo NAS) once orisa is allowed on drogo and mounted.
+      # drogo NAS (SMB, mounted on the host at /mnt/dataDrogo), also read-only.
+      - /mnt/dataDrogo/media:/mediaDrogo:ro
     devices:
       # AMD iGPU (VAAPI hardware transcoding), passed through from the host.
       - /dev/dri/renderD128:/dev/dri/renderD128

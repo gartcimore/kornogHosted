@@ -55,6 +55,80 @@
     opts: "{{ nfs_data.opts }}"
     state: mounted
 
+# --- SMB shares (drogo) ------------------------------------------------------------
+- name: Read SMB credentials file status
+  ansible.builtin.stat:
+    path: "{{ item.credentials }}"
+    get_checksum: false
+    get_mime: false
+  loop: "{{ cifs_mounts | default([]) }}"
+  loop_control:
+    label: "{{ item.credentials }}"
+  register: proxmox_host_cifs_creds
+
+- name: SMB credentials file exists and is private
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.mode == '0600'
+      - item.stat.pw_name == 'root'
+    fail_msg: >-
+      {{ item.item.credentials }} must exist on {{ inventory_hostname }}, owned by root
+      with mode 0600 (username= and password= lines). It is not stored in git.
+  loop: "{{ proxmox_host_cifs_creds.results }}"
+  loop_control:
+    label: "{{ item.item.credentials }}"
+
+- name: Is each SMB share mounted
+  ansible.builtin.command: findmnt --noheadings {{ item.path | quote }}
+  loop: "{{ cifs_mounts | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: proxmox_host_cifs_mounted
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: SMB mount points exist  # noqa: risky-file-permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+  loop: "{{ cifs_mounts | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+# Read after the directory task, so a dry run (which does not create it) skips
+# the next step instead of failing on a missing path.
+- name: Read SMB mount point state
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop: "{{ cifs_mounts | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: proxmox_host_cifs_dirs
+  check_mode: false
+
+- name: Mark empty SMB mount points immutable  # noqa: risky-file-permissions
+  ansible.builtin.file:
+    path: "{{ item.item.path }}"
+    attributes: "+i"
+  loop: "{{ proxmox_host_cifs_mounted.results }}"
+  loop_control:
+    label: "{{ item.item.path }}"
+    index_var: proxmox_host_idx
+  when: item.rc != 0 and proxmox_host_cifs_dirs.results[proxmox_host_idx].stat.exists
+
+- name: SMB shares in fstab and mounted
+  ansible.posix.mount:
+    src: "{{ item.src }}"
+    path: "{{ item.path }}"
+    fstype: cifs
+    opts: "credentials={{ item.credentials }},{{ item.opts }}"
+    state: mounted
+  loop: "{{ cifs_mounts | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+
 - name: Guests start after the NFS mount
   ansible.builtin.copy:
     src: 10-nfs.conf

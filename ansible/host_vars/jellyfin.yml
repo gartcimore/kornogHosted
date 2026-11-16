@@ -12,6 +12,8 @@ lxc:
   pct_options:
     # Media from Ymir, read-only. World-readable, so no id-map is needed.
     mp0: /mnt/dataYmir/media,mp=/mnt/dataYmir/media,ro=1
+    # Media from drogo (SMB on the host, mapped to the guest's UID 1000), read-only.
+    mp1: /mnt/dataDrogo/media,mp=/mnt/dataDrogo/media,ro=1
     # iGPU render node. The gid is the group owning the node inside the guest.
     # It must be the gid Jellyfin's ffmpeg runs with: the linuxserver image runs
     # it as `abc` (PUID/PGID 1000) and does not add it to the `render` group, so

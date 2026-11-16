@@ -24,12 +24,17 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 
 - [x] Step 8 (`rproxy`): LXC 121 at `192.168.0.21` (Debian 13, unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB). Wildcard cert bind-mounted read-only at `/certs` from the host's `/mnt/dataYmir/containers/volumes/acme/certs`. Docker CE installed. Traefik (file provider only, config in `rproxy/`, deployed to `/opt/rproxy`) tested with `curl --resolve` against heimdall routes: valid cert, HTTP redirects to HTTPS. DNS still points at heimdall.
 
+- [x] Step 8 (`jellyfin`): LXC 122 at `192.168.0.22` (4 cores, 4 GB RAM, 16 GB disk, start order 2), created by the Ansible playbook. Media mounted read-only at `/mnt/dataYmir/media`, iGPU passed through (see "Pass through the iGPU"), hardware transcoding verified. Currently a fresh Jellyfin with a throwaway admin: heimdall's config (4.4 GB) is not migrated yet and DNS still points at heimdall.
+- [x] Backup job `backup-c3366771-401a` (02:00, all guests, `ymir-backup`) exists; restore of `rproxy` tested.
+
 ### Where we stopped / next
 
-1. Step 8: create the `rproxy` LXC (Traefik). Choose and reserve its IP in UniFi (example `192.168.0.21`, VMID `121`), download a Debian 13 template (`pveam update`, `pveam available --section system | grep -i debian`), then `pct create` (unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB, SSH key injected, start at boot order 1).
-2. Add the nightly backup job (Datacenter > Backup, storage `ymir-backup`) and test a restore.
-3. Build the `jellyfin` and `arr` guests, with the iGPU, `/dev/net/tun` and the `/mnt/dataYmir` bind mount plus UID 1000 id-map.
-4. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), quota/size check on `proxmox-backup`.
+1. `jellyfin` migration: mount drogo (CIFS, `//192.168.0.44/data`) on orisa, then copy heimdall's `/docker/appdata/jellyfin` into `/srv/jellyfin/config` in CT 122, then switch the `jellyfin.kornoglab.fr` route in `rproxy/traefik/dynamic/` and its UniFi A record to `.21`.
+   - drogo mount: permanent CIFS mount on the host with `uid=101000,gid=101000,ro,dir_mode=0550,file_mode=0440` (101000 is the guest's UID 1000), credentials file outside git (`/root/.smb-drogo`, mode 0600), bind-mounted at `/mediaDrogo`. Do not use `x-systemd.automount` (idle unmount desyncs bind mounts).
+   - Old library paths in the Jellyfin database are `/mediaYmir` and `/mediaDrogo`; keep these container paths.
+   - Do not scan libraries before `/mediaDrogo` exists.
+2. Build the `arr` guest (`/dev/net/tun`, `/mnt/dataYmir` read-write, UID 1000 id-map, `root:1000:1` in `/etc/subuid` and `/etc/subgid`) and `services`.
+3. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
 
 > Commands marked `# host` run in a shell on orisa (web UI Shell, console or SSH). Check your version first with `pveversion`. Proxmox VE 8 (Debian 12) and 9 (Debian 13) differ in apt source file format (see step 1).
 
@@ -314,19 +319,20 @@ In the UI (Create CT): unprivileged on, Features: **Nesting** and **keyctl** on,
 
 ### Pass through the iGPU (for Jellyfin VAAPI)
 
-Find the render node and its group on the host:
-```bash
-# host
-ls -l /dev/dri
-getent group render video
-```
+Done for the `jellyfin` guest (CT 122), tested 2026-11-16: a forced transcode played and `/sys/class/drm/card1/device/gpu_busy_percent` rose to 20-90% in bursts.
 
-Add to `/etc/pve/lxc/<id>.conf` (PVE 8.1+ syntax):
+On the host the render node is `/dev/dri/renderD128` (group `render`, GID 993), driver `amdgpu`. In the guest definition (`ansible/host_vars/jellyfin.yml`, applied with `pct set`):
 ```
-dev0: /dev/dri/renderD128,gid=<render-gid-inside-ct>
-dev1: /dev/net/tun
+dev0: /dev/dri/renderD128,gid=1000
 ```
-`/dev/net/tun` is needed by gluetun. Inside the container, make sure the `render` group has the same GID, and in the Jellyfin service add `devices: ["/dev/dri:/dev/dri"]` and `group_add: ["<render-gid>"]`. The current compose file has no `devices` entry for Jellyfin because the Pi used no GPU. Then enable VAAPI in Jellyfin > Dashboard > Playback. The 660M supports H.264/HEVC/VP9/AV1 decode (no AV1 encode).
+Lessons from the first attempt:
+- **The `gid` must be the group the transcoder runs with, not the host's `render` group.** The linuxserver Jellyfin image runs ffmpeg as `abc` (PUID/PGID 1000) and does not add it to the device's group. With `gid=993` ffmpeg failed with `No device available for decoder: device type vaapi needed for codec hevc`, while `vainfo` as root worked. Setting `gid=1000` fixed it. This ties the setting to `PUID`/`PGID=1000`.
+- Test as the real user, not root: `docker exec -u abc jellyfin /usr/lib/jellyfin-ffmpeg/vainfo --display drm --device /dev/dri/renderD128`.
+- Compose needs `devices: [/dev/dri/renderD128:/dev/dri/renderD128]` (see `jellyfin/docker-compose.yml`).
+- A changed `dev0` needs a guest restart (`pct reboot <id>`).
+- `/dev/net/tun` for gluetun (the `arr` guest) is passed the same way: `dev1: /dev/net/tun`.
+
+Hardware formats (from `vainfo`, Mesa radeonsi, Rembrandt): decode H.264, HEVC 8/10-bit, VP9 profiles 0 and 2, AV1; encode H.264 and HEVC. No VC1, MPEG2, VP8, HEVC RExt, or AV1 encode. In Jellyfin > Dashboard > Playback > Transcoding: VAAPI, device `/dev/dri/renderD128`, tick only the supported decode formats (untick VC1), leave the two Intel low-power encoder boxes off, and do not enable AV1 encoding.
 
 ### Media from Ymir
 
