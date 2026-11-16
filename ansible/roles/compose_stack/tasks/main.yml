@@ -1,0 +1,29 @@
+---
+# Copies each stack in `compose_stacks` to /opt/<name> and starts it.
+- name: Stack directory
+  ansible.builtin.file:
+    path: "/opt/{{ item.name }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ compose_stacks | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Stack files
+  ansible.builtin.copy:
+    src: "{{ item.src }}/"
+    dest: "/opt/{{ item.name }}/"
+    mode: "0644"
+    directory_mode: "0755"
+  loop: "{{ compose_stacks | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Stack is up
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ item.name }}"
+    state: present
+    pull: missing
+  loop: "{{ compose_stacks | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"

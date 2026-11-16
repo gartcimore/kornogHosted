@@ -1,0 +1,14 @@
+---
+docker_host_base_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - vim
+
+docker_host_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-compose-plugin
+
+docker_host_keyring: /etc/apt/keyrings/docker.asc

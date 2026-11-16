@@ -1,0 +1,15 @@
+---
+proxmox_host_packages:
+  - amd64-microcode
+  - sudo
+  - curl
+  - vim
+  - htop
+  - smartmontools
+  - lm-sensors
+  - nfs-common
+  - ethtool
+
+# vzdump writes temp files here. Needed so unprivileged LXC backups to NFS
+# do not fail with "Cannot open: Permission denied".
+proxmox_host_vzdump_tmpdir: /var/tmp

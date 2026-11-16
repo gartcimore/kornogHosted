@@ -1,0 +1,73 @@
+---
+- name: "Load the definition of {{ lxc_guest_name }}"
+  ansible.builtin.set_fact:
+    lxc_guest_def: "{{ hostvars[lxc_guest_name].lxc }}"
+
+- name: "Check existence of {{ lxc_guest_name }}"
+  ansible.builtin.command: pct status {{ lxc_guest_def.vmid | quote }}
+  register: lxc_guest_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "Create {{ lxc_guest_name }}"
+  ansible.builtin.command:
+    argv:
+      - pct
+      - create
+      - "{{ lxc_guest_def.vmid }}"
+      - "{{ lxc_template_storage }}:vztmpl/{{ lxc_template }}"
+      - --hostname
+      - "{{ lxc_guest_name }}"
+      - --ostype
+      - debian
+      - --unprivileged
+      - "1"
+      - --features
+      - "{{ lxc_guest_def.features | default('nesting=1,keyctl=1') }}"
+      - --cores
+      - "{{ lxc_guest_def.cores }}"
+      - --memory
+      - "{{ lxc_guest_def.memory }}"
+      - --swap
+      - "{{ lxc_guest_def.swap }}"
+      - --rootfs
+      - "{{ lxc_rootfs_storage }}:{{ lxc_guest_def.disk_gb }}"
+      - --net0
+      - "name=eth0,bridge={{ lxc_bridge }},ip={{ lxc_guest_def.ip }}/24,gw={{ lan_gateway }}"
+      - --nameserver
+      - "{{ lan_dns }}"
+      - --searchdomain
+      - "{{ lan_search_domain }}"
+      - --onboot
+      - "1"
+      - --startup
+      - "order={{ lxc_guest_def.startup_order }}"
+      - --ssh-public-keys
+      - "{{ lxc_ssh_keys_file }}"
+  when: lxc_guest_status.rc != 0
+  changed_when: true
+
+- name: "Set extra pct options on {{ lxc_guest_name }}"
+  ansible.builtin.command:
+    argv:
+      - pct
+      - set
+      - "{{ lxc_guest_def.vmid }}"
+      - "--{{ item.key }}"
+      - "{{ item.value }}"
+  loop: "{{ (lxc_guest_def.pct_options | default({})) | dict2items }}"
+  when: lxc_guest_status.rc != 0
+  changed_when: true
+
+- name: "Read the state of {{ lxc_guest_name }}"
+  ansible.builtin.command: pct status {{ lxc_guest_def.vmid | quote }}
+  register: lxc_guest_state
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: "Start {{ lxc_guest_name }}"
+  ansible.builtin.command: pct start {{ lxc_guest_def.vmid | quote }}
+  when: lxc_guest_state.rc == 0 and 'running' not in lxc_guest_state.stdout
+  changed_when: true

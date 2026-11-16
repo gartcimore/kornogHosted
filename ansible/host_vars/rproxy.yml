@@ -1,0 +1,22 @@
+---
+# Guest definition, read by the lxc_guest role on orisa. It is applied only
+# when the guest is created. Changing it later does not modify a running guest.
+lxc:
+  vmid: 121
+  ip: 192.168.0.21
+  cores: 1
+  memory: 512
+  swap: 256
+  disk_gb: 8
+  startup_order: 1
+  # Extra `pct set` options. mp0 is the wildcard cert from the acme container,
+  # bind-mounted read-only from the host's NFS mount.
+  pct_options:
+    mp0: /mnt/dataYmir/containers/volumes/acme/certs,mp=/certs,ro=1
+
+ansible_host: "{{ lxc.ip }}"
+
+# Stacks copied to /opt/<name> and started with docker compose.
+compose_stacks:
+  - name: rproxy
+    src: "{{ playbook_dir }}/../rproxy"

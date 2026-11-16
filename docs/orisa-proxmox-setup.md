@@ -20,6 +20,8 @@ Status legend: [x] done, [ ] to do.
 
 Fixed addresses (host and guests) are tracked in [ip-inventory.md](ip-inventory.md).
 
+Configuration as code: the host settings, guest definitions, Docker and the `rproxy` stack are described in [`../ansible/`](../ansible/README.md). A dry run (`--check`) against orisa and `rproxy` shows no changes on orisa. What is not managed (certificate, notifications, 2FA, network bridge/bond, BIOS, UniFi, DSM) is listed in that README and stays documented here.
+
 - [x] Step 8 (`rproxy`): LXC 121 at `192.168.0.21` (Debian 13, unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB). Wildcard cert bind-mounted read-only at `/certs` from the host's `/mnt/dataYmir/containers/volumes/acme/certs`. Docker CE installed. Traefik (file provider only, config in `rproxy/`, deployed to `/opt/rproxy`) tested with `curl --resolve` against heimdall routes: valid cert, HTTP redirects to HTTPS. DNS still points at heimdall.
 
 ### Where we stopped / next
@@ -389,7 +391,16 @@ Keep the **same path inside every guest** (`/mnt/dataYmir`), so compose files (`
 
 Mount read-only where write is not needed. Jellyfin only reads media: `mp0: /mnt/dataYmir,mp=/mnt/dataYmir,ro=1`. Its config stays on the guest disk.
 
-Mount-ordering: start NFS-dependent guests after the host has mounted the share, which `_netdev` handles at boot, and give them a start delay as a safety net (guest Options > Start/Shutdown order, e.g. `rproxy` order 1, `arr` and `jellyfin` order 2 with a 30 s delay). Proxmox does not include bind mounts (host-path `mp` entries) in vzdump backups, so the NAS data is not copied into guest backups. Verify with one backup's size.
+Mount-ordering: start NFS-dependent guests after the host has mounted the share, which `_netdev` handles at boot, and give them a start delay as a safety net (guest Options > Start/Shutdown order, e.g. `rproxy` order 1, `arr` and `jellyfin` order 2 with a 30 s delay). Start ordering: by default `pve-guests.service` has no dependency on the NFS mount (`systemd-analyze critical-chain pve-guests.service` shows none), so a guest can start before `/mnt/dataYmir` is ready. Fix, applied on orisa:
+```
+# /etc/systemd/system/pve-guests.service.d/10-nfs.conf
+[Unit]
+Wants=mnt-dataYmir.mount
+After=remote-fs.target mnt-dataYmir.mount
+```
+then `systemctl daemon-reload`. `Wants=` is deliberate (not `RequiresMountsFor=`): a NAS outage then delays guests but does not stop all of them from starting. After the next reboot, `systemd-analyze critical-chain pve-guests.service` should show `mnt-dataYmir.mount`.
+
+Proxmox does not include bind mounts (host-path `mp` entries) in vzdump backups, so the NAS data is not copied into guest backups. Verify with one backup's size.
 
 ### 9.4 UID/GID mapping
 

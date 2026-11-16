@@ -1,0 +1,5 @@
+---
+lan_gateway: 192.168.0.1
+lan_dns: 192.168.0.1
+lan_search_domain: kornoglab.fr
+timezone: Europe/Paris

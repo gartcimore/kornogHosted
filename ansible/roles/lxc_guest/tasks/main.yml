@@ -1,0 +1,19 @@
+---
+# Creates the LXC guests listed in the `guests` inventory group. A guest is
+# only configured when it is created. Existing guests are left alone.
+- name: List downloaded templates
+  ansible.builtin.command: pveam list {{ lxc_template_storage | quote }}
+  register: lxc_guest_templates
+  changed_when: false
+  check_mode: false
+
+- name: Download the LXC template
+  ansible.builtin.command: pveam download {{ lxc_template_storage | quote }} {{ lxc_template | quote }}
+  when: lxc_template not in lxc_guest_templates.stdout
+  changed_when: true
+
+- name: Create and start each guest
+  ansible.builtin.include_tasks: guest.yml
+  loop: "{{ groups['guests'] }}"
+  loop_control:
+    loop_var: lxc_guest_name

@@ -1,0 +1,31 @@
+---
+- name: Proxmox host and LXC guests
+  hosts: proxmox
+  become: true
+  roles:
+    - role: proxmox_host
+      tags: [host]
+    - role: lxc_guest
+      tags: [lxc]
+
+- name: Guest software
+  hosts: guests
+  tasks:
+    - name: Wait for the guest to accept SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+      tags: [always]
+
+    - name: Docker
+      ansible.builtin.include_role:
+        name: docker_host
+        apply:
+          tags: [docker]
+      tags: [docker]
+
+    - name: Compose stacks
+      ansible.builtin.include_role:
+        name: compose_stack
+        apply:
+          tags: [stacks]
+      tags: [stacks]

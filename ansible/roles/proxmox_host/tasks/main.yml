@@ -1,0 +1,192 @@
+---
+# --- Packages and Linux account -------------------------------------------
+- name: Install host packages
+  ansible.builtin.apt:
+    name: "{{ proxmox_host_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Admin Linux user is in the sudo group
+  ansible.builtin.user:
+    name: "{{ proxmox_admin_linux_user }}"
+    groups: sudo
+    append: true
+
+# --- SSH hardening ----------------------------------------------------------
+- name: SSH hardening drop-in (key-only login)
+  ansible.builtin.copy:
+    src: 10-hardening.conf
+    dest: /etc/ssh/sshd_config.d/10-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload sshd
+
+# --- NFS data share from Ymir ------------------------------------------------
+- name: Is the data share mounted
+  ansible.builtin.command: findmnt --noheadings {{ nfs_data.path | quote }}
+  register: proxmox_host_nfs_mounted
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# No mode/owner here: when mounted, this path is the NFS share root and its
+# permissions must not be touched.
+- name: Mount point exists  # noqa: risky-file-permissions
+  ansible.builtin.file:
+    path: "{{ nfs_data.path }}"
+    state: directory
+
+# Immutable underneath the mount, so a missing mount makes writes fail instead
+# of filling the local disk. Only possible while the share is not mounted.
+- name: Mark the empty mount point immutable  # noqa: risky-file-permissions
+  ansible.builtin.file:
+    path: "{{ nfs_data.path }}"
+    attributes: "+i"
+  when: proxmox_host_nfs_mounted.rc != 0
+
+- name: Data share in fstab and mounted
+  ansible.posix.mount:
+    src: "{{ nfs_data.src }}"
+    path: "{{ nfs_data.path }}"
+    fstype: nfs
+    opts: "{{ nfs_data.opts }}"
+    state: mounted
+
+- name: Guests start after the NFS mount
+  ansible.builtin.copy:
+    src: 10-nfs.conf
+    dest: /etc/systemd/system/pve-guests.service.d/10-nfs.conf
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"
+  notify: Reload systemd
+
+# --- Backups -------------------------------------------------------------------
+- name: Set the vzdump temp directory on local disk
+  ansible.builtin.lineinfile:
+    path: /etc/vzdump.conf
+    regexp: '^#?tmpdir:'
+    line: "tmpdir: {{ proxmox_host_vzdump_tmpdir }}"
+
+- name: Is the backup storage defined
+  ansible.builtin.command: pvesm status --storage {{ backup_storage.id | quote }}
+  register: proxmox_host_backup_storage_status
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Define the NFS backup storage
+  ansible.builtin.command:
+    argv:
+      - pvesm
+      - add
+      - nfs
+      - "{{ backup_storage.id }}"
+      - --server
+      - "{{ backup_storage.server }}"
+      - --export
+      - "{{ backup_storage.export }}"
+      - --content
+      - "{{ backup_storage.content }}"
+  when: proxmox_host_backup_storage_status.rc != 0
+  changed_when: true
+
+- name: List backup jobs
+  ansible.builtin.command: pvesh get /cluster/backup --output-format json
+  register: proxmox_host_backup_jobs
+  changed_when: false
+  check_mode: false
+
+- name: Create the nightly backup job
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - create
+      - /cluster/backup
+      - --id
+      - "{{ backup_job.id }}"
+      - --schedule
+      - "{{ backup_job.schedule }}"
+      - --storage
+      - "{{ backup_storage.id }}"
+      - --mode
+      - "{{ backup_job.mode }}"
+      - --compress
+      - "{{ backup_job.compress }}"
+      - --all
+      - "1"
+      - --enabled
+      - "1"
+      - --node
+      - "{{ inventory_hostname }}"
+      - --prune-backups
+      - "{{ backup_job.prune }}"
+  when: >-
+    proxmox_host_backup_jobs.stdout | from_json
+    | selectattr('storage', 'defined')
+    | selectattr('storage', 'eq', backup_storage.id)
+    | list | length == 0
+  changed_when: true
+
+# --- Proxmox web UI administrators ----------------------------------------------
+- name: Read Proxmox groups
+  ansible.builtin.command: pveum group list --output-format json
+  register: proxmox_host_pve_groups_raw
+  changed_when: false
+  check_mode: false
+
+- name: Read Proxmox users
+  ansible.builtin.command: pveum user list --output-format json
+  register: proxmox_host_pve_users_raw
+  changed_when: false
+  check_mode: false
+
+- name: Read Proxmox ACLs
+  ansible.builtin.command: pveum acl list --output-format json
+  register: proxmox_host_pve_acl_raw
+  changed_when: false
+  check_mode: false
+
+- name: Work out what is missing
+  ansible.builtin.set_fact:
+    proxmox_host_pve_group_missing: >-
+      {{ proxmox_admin_group not in (proxmox_host_pve_groups_raw.stdout | from_json | map(attribute='groupid') | list) }}
+    proxmox_host_pve_user_missing: >-
+      {{ proxmox_admin_user not in (proxmox_host_pve_users_raw.stdout | from_json | map(attribute='userid') | list) }}
+    proxmox_host_pve_user_in_group: >-
+      {{ proxmox_admin_user in (
+           (proxmox_host_pve_groups_raw.stdout | from_json
+            | selectattr('groupid', 'eq', proxmox_admin_group)
+            | map(attribute='users', default='') | list | first | default(''))
+           .split(',')) }}
+    proxmox_host_pve_acl_missing: >-
+      {{ (proxmox_host_pve_acl_raw.stdout | from_json
+          | selectattr('path', 'eq', '/')
+          | selectattr('type', 'eq', 'group')
+          | selectattr('ugid', 'eq', proxmox_admin_group)
+          | selectattr('roleid', 'eq', proxmox_admin_role)
+          | list | length) == 0 }}
+
+- name: Create the admin group
+  ansible.builtin.command: pveum group add {{ proxmox_admin_group | quote }} --comment "Proxmox administrators"
+  when: proxmox_host_pve_group_missing | bool
+  changed_when: true
+
+- name: Grant the admin role to the group
+  ansible.builtin.command: pveum acl modify / --groups {{ proxmox_admin_group | quote }} --roles {{ proxmox_admin_role | quote }}
+  when: proxmox_host_pve_acl_missing | bool
+  changed_when: true
+
+- name: Create the web UI user
+  ansible.builtin.command: pveum user add {{ proxmox_admin_user | quote }} --groups {{ proxmox_admin_group | quote }}
+  when: proxmox_host_pve_user_missing | bool
+  changed_when: true
+
+- name: Put the existing web UI user in the admin group
+  ansible.builtin.command: pveum user modify {{ proxmox_admin_user | quote }} --groups {{ proxmox_admin_group | quote }}
+  when: not (proxmox_host_pve_user_missing | bool) and not (proxmox_host_pve_user_in_group | bool)
+  changed_when: true

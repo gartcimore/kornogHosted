@@ -1,0 +1,35 @@
+---
+# Proxmox host settings (see docs/orisa-proxmox-setup.md)
+lxc_template: debian-13-standard_13.6-1_amd64.tar.zst
+lxc_template_storage: local
+lxc_rootfs_storage: local-lvm
+lxc_bridge: vmbr0
+# Public keys injected into new guests (root login by key).
+lxc_ssh_keys_file: /home/gart/.ssh/authorized_keys
+
+# Linux account that also administers the Proxmox web UI.
+proxmox_admin_linux_user: gart
+proxmox_admin_user: gart@pam
+proxmox_admin_group: admins
+proxmox_admin_role: Administrator
+
+# NFS share from Ymir, mounted once on the host and bind-mounted into guests.
+nfs_data:
+  src: 192.168.0.54:/volume1/data
+  path: /mnt/dataYmir
+  opts: rw,hard,nofail,_netdev,retry=5,x-systemd.mount-timeout=30,x-systemd.device-timeout=30,vers=3,sec=sys
+
+# NFS storage used by vzdump backups.
+backup_storage:
+  id: ymir-backup
+  server: 192.168.0.54
+  export: /volume1/proxmox-backup
+  content: backup
+
+# Nightly backup job (Datacenter > Backup).
+backup_job:
+  id: nightly-ymir
+  schedule: "02:00"
+  mode: snapshot
+  compress: zstd
+  prune: keep-daily=7,keep-weekly=4,keep-monthly=3
