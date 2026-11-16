@@ -1,0 +1,25 @@
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+      - JELLYFIN_PublishedServerUrl=https://jellyfin.kornoglab.fr
+    volumes:
+      # Config, metadata and database. Lives on the guest disk (backed up by vzdump).
+      - /srv/jellyfin/config:/config
+      # Same container paths as on heimdall, so the library paths stored in the
+      # Jellyfin database stay valid. Read-only: Jellyfin cannot write NFO files
+      # or artwork next to the media.
+      - /mnt/dataYmir/media:/mediaYmir:ro
+      # TODO /mediaDrogo (drogo NAS) once orisa is allowed on drogo and mounted.
+    devices:
+      # AMD iGPU (VAAPI hardware transcoding), passed through from the host.
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    ports:
+      - 8096:8096 # web UI, reached through rproxy (Traefik)
+      - 7359:7359/udp # client auto-discovery
+      - 1900:1900/udp # DLNA

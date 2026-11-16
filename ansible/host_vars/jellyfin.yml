@@ -1,0 +1,22 @@
+---
+# Guest definition, read by the lxc_guest role on orisa. It is applied only
+# when the guest is created. Changing it later does not modify a running guest.
+lxc:
+  vmid: 122
+  ip: 192.168.0.22
+  cores: 4
+  memory: 4096
+  swap: 512
+  disk_gb: 16
+  startup_order: 2
+  pct_options:
+    # Media from Ymir, read-only. World-readable, so no id-map is needed.
+    mp0: /mnt/dataYmir/media,mp=/mnt/dataYmir/media,ro=1
+    # iGPU render node. gid is the host's `render` group (getent group render).
+    dev0: /dev/dri/renderD128,gid=993
+
+ansible_host: "{{ lxc.ip }}"
+
+compose_stacks:
+  - name: jellyfin
+    src: "{{ playbook_dir }}/../jellyfin"
