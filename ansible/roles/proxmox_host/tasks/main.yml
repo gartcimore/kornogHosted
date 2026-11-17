@@ -55,6 +55,18 @@
     opts: "{{ nfs_data.opts }}"
     state: mounted
 
+# --- WireGuard for gluetun (arr guest) ------------------------------------------------
+# A guest cannot load kernel modules, the host has to. Without this, gluetun only
+# works after a manual `modprobe wireguard`.
+- name: Load the WireGuard kernel module at boot
+  ansible.builtin.copy:
+    content: "wireguard\n"
+    dest: /etc/modules-load.d/wireguard.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Load kernel modules
+
 # --- Unprivileged guests that map UID/GID 1000 to the host's 1000 --------------------
 - name: Allow root to map UID/GID 1000 into guests
   ansible.builtin.lineinfile:

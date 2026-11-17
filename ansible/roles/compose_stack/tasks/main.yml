@@ -76,6 +76,7 @@
   loop: "{{ compose_stacks | default([]) | selectattr('systemd_unit', 'defined') | list }}"
   loop_control:
     label: "{{ item.systemd_unit }}"
+  when: compose_stack_autostart | bool
 
 - name: Stack is up
   community.docker.docker_compose_v2:
@@ -85,3 +86,4 @@
   loop: "{{ compose_stacks | default([]) | rejectattr('systemd_unit', 'defined') | list }}"
   loop_control:
     label: "{{ item.name }}"
+  when: compose_stack_autostart | bool

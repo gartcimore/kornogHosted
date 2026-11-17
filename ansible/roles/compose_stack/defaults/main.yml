@@ -1,0 +1,5 @@
+---
+# false: deploy the files and the systemd unit but do not enable or start the
+# stack (for testing one service by hand before starting everything).
+#   ansible-playbook site.yml --limit arr --tags stacks -e compose_stack_autostart=false
+compose_stack_autostart: true
