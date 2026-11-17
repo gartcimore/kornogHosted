@@ -36,7 +36,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 2. Watch `df -h` and `sensors` on orisa for a few days (transcoding plus the *arr stack). Retire heimdall's stack for good after about a week: remove its stopped containers, then the data it still holds in `/docker/appdata` (the rollback copy, about 6 GB with Jellyfin).
 3. Build the `services` guest (postgres, valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks.
 4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
-5. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible, remove `gluetun.spike` from the `arr` guest.
+5. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
 
 > Commands marked `# host` run in a shell on orisa (web UI Shell, console or SSH). Check your version first with `pveversion`. Proxmox VE 8 (Debian 12) and 9 (Debian 13) differ in apt source file format (see step 1).
 
