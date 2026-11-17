@@ -14,9 +14,11 @@ lxc:
     # gluetun (VPN) needs the tun device.
     dev0: /dev/net/tun
     # Ymir data share (NFS) and drogo (SMB), both read-write. They are mounted
-    # on the host; see group_vars/proxmox.yml.
+    # on the host (drogo twice: /mnt/dataDrogo read-only for jellyfin, /mnt/dataDrogoRW
+    # read-write for this guest; see group_vars/proxmox.yml). parr's compose file expects drogo
+    # at /mnt/data (sonarr: /mnt/data/:/dataDrogo), as on heimdall.
     mp0: /mnt/dataYmir,mp=/mnt/dataYmir
-    mp1: /mnt/dataDrogo,mp=/mnt/dataDrogo
+    mp1: /mnt/dataDrogoRW,mp=/mnt/data
   # Guest UID/GID 1000 is host 1000, so files written to the shares are owned by
   # 1000:1000 like on heimdall. Needs "root:1000:1" in the host's /etc/subuid and
   # /etc/subgid (proxmox_host role).

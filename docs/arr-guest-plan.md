@@ -38,7 +38,7 @@ Not moved:
    lxc.idmap: u 1001 101001 64535
    lxc.idmap: g 1001 101001 64535
    ```
-3. **Drogo mount becomes read-write and owned by 1000.** Change the host mount (`group_vars/proxmox.yml`) from `ro,uid=101000,gid=101000,dir_mode=0550,file_mode=0440` to `uid=1000,gid=1000,dir_mode=0775,file_mode=0664`. The `arr` guest writes through its UID 1000. The Jellyfin guest keeps its bind mount read-only (`ro=1`) and reads through the "other" permission bits, so Jellyfin needs no change. The mount must be unmounted and mounted again for the new owner to apply, then guests restarted.
+3. **Drogo is mounted twice on the host, once per access level.** `/mnt/dataDrogo` stays read-only and owned by 101000 (Jellyfin, unchanged). A new `/mnt/dataDrogoRW` is read-write and owned by 1000 (mode 0775/0664), and only the `arr` guest gets it, at `/mnt/data` where parr's compose file expects it. Which guest sees which mount is decided by each guest's own `mpN` line.
 4. **Secrets: the `.env` is encrypted with git-secret** (`arr/.env` is gitignored, `arr/.env.secret` is committed), revealed locally and copied by Ansible with mode 0600. `arr/.env.sample` lists the variables. `HOMARR_SECRET_KEY` must be the same value as on heimdall. The webhook variables are dropped.
 5. **Routing:** a new `rproxy/traefik/dynamic/routes-arr.yml`, one router and service per hostname, pointing at `192.168.0.23:<port>`. Then the UniFi A records for those names move from `192.168.0.20` to `192.168.0.21`.
 6. **Start at boot with the systemd unit** (with the restart fixes from `parr`), installed by Ansible with `WorkingDirectory=/opt/parr`.
@@ -46,7 +46,7 @@ Not moved:
 
 ## Guest definition
 
-See `ansible/host_vars/arr.yml`: 4 cores, 6 GB RAM, 512 MB swap, 24 GB disk (appdata is about 1.3 GB without Jellyfin, plus Docker images), start order 3, `dev0: /dev/net/tun`, read-write bind mounts of `/mnt/dataYmir` and `/mnt/dataDrogo`, and the six `lxc.idmap` lines.
+See `ansible/host_vars/arr.yml`: 4 cores, 6 GB RAM, 512 MB swap, 24 GB disk (appdata is about 1.3 GB without Jellyfin, plus Docker images), start order 3, `dev0: /dev/net/tun`, read-write bind mounts of `/mnt/dataYmir` and, at `/mnt/data` (where parr's compose expects it), the read-write drogo mount `/mnt/dataDrogoRW`, and the six `lxc.idmap` lines.
 
 ## Changes needed in the repos
 
@@ -55,7 +55,7 @@ Done (uncommitted at the time of writing):
 - `ansible/roles/lxc_guest`: `raw_config` lines added to the guest config before the first start.
 - `ansible/roles/compose_stack`: clone a repository, copy extra files, install the systemd unit.
 - `ansible/roles/docker_host`: `git` installed.
-- `ansible/group_vars/proxmox.yml`: drogo mount read-write, owned by 1000.
+- `ansible/group_vars/proxmox.yml`: second drogo mount `/mnt/dataDrogoRW`, read-write, owned by 1000.
 - `ansible/host_vars/arr.yml`, inventory entry, `arr/docker-compose.override.yml`, `arr/.env.sample`.
 
 Still to do:
@@ -93,4 +93,4 @@ Before step 5: start `arr` on heimdall again (`sudo systemctl start arr`) and st
 ## Open questions
 
 1. ~~recyclarr~~: resolved. `/docker/appdata/recyclarr` on heimdall was never used, so it is dropped and not copied.
-2. After applying the host changes, the drogo mount must be unmounted and mounted again for the new owner, with CT 122 (jellyfin) stopped meanwhile: `pct stop 122; umount /mnt/dataDrogo; mount /mnt/dataDrogo; pct start 122`, then check a drogo film plays.
+2. ~~Remount of drogo~~: replaced by a second mount. An earlier run of `--tags host` had remounted `/mnt/dataDrogo` read-write with owner 1000 and Jellyfin kept working (bind mount `ro`, write test failed with "Read-only file system"). The final design keeps `/mnt/dataDrogo` read-only as it was and adds `/mnt/dataDrogoRW` for `arr`, so Jellyfin's source is read-only at the CIFS level too. Running `--tags host` again moves `/mnt/dataDrogo` back to its read-only options and creates the new mount.
