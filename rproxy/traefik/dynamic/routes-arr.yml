@@ -1,0 +1,92 @@
+# Services of the parr stack, running in the `arr` LXC guest (CT 123,
+# 192.168.0.23, see ansible/host_vars/arr.yml and docs/arr-guest-plan.md).
+# The file provider does not expand variables, so the domain is written out.
+# HTTP is redirected to HTTPS by the `web` entrypoint, no router needed for it.
+# After editing: ansible-playbook site.yml --limit rproxy --tags stacks
+
+http:
+  routers:
+    prowlarr:
+      rule: Host(`prowlarr.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: prowlarr
+    radarr:
+      rule: Host(`radarr.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: radarr
+    sonarr:
+      rule: Host(`sonarr.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: sonarr
+    bazarr:
+      rule: Host(`bazarr.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: bazarr
+    lidarr:
+      rule: Host(`lidarr.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: lidarr
+    seerr:
+      rule: Host(`seerr.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: seerr
+    homarr:
+      rule: Host(`homarr.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: homarr
+    # qBittorrent shares gluetun's network, so its web UI is gluetun's port 8080.
+    qbittorrent:
+      rule: Host(`qbittorrent.kornoglab.fr`) || Host(`qbt.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: qbittorrent
+    books:
+      rule: Host(`books.kornoglab.fr`)
+      entryPoints: [websecure]
+      tls: {}
+      service: books
+
+  services:
+    prowlarr:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:9696
+    radarr:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:7878
+    sonarr:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:8989
+    bazarr:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:6767
+    lidarr:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:8686
+    seerr:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:5055
+    homarr:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:7575
+    qbittorrent:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:8080
+    books:
+      loadBalancer:
+        servers:
+          - url: http://192.168.0.23:8083

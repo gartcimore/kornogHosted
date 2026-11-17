@@ -21,7 +21,7 @@ and look in the UniFi client list. A device with a hand-set static IP does not a
 | `.12` | `orisa` | Proxmox VE host | static in `/etc/network/interfaces` + UniFi fixed IP | `orisa.kornoglab.fr`. See [orisa-proxmox-setup.md](orisa-proxmox-setup.md) |
 | `.14` | APsystems ECU (monitoring) | solar monitoring, wired | UniFi fixed IP | |
 | `.15` | APsystems ECU (monitoring) | solar monitoring, Wi-Fi | UniFi fixed IP | same function as `.14` on its Wi-Fi interface |
-| `.20` | `heimdall` | Raspberry Pi, parr stack, Traefik | UniFi fixed IP | to be retired after migration to orisa |
+| `.20` | `heimdall` | Raspberry Pi | UniFi fixed IP | the parr stack and Traefik moved to orisa on 2026-11-17 (its `arr` service is disabled, containers removed, data kept as a rollback copy). `heimdall.kornoglab.fr` still points here. To retire after a few days |
 | `.30` | Home Assistant | HA | UniFi fixed IP | `:8123` |
 | `.33` | `pachimari` | your desktop | UniFi fixed IP | |
 | `.40` | Philips SmartTV (living room) | TV | UniFi fixed IP | UniFi shows hostname `USWFlexMiniChas`, which is a wrong name set by the TV. It is plugged into port 2 of the USW Flex Mini "salon" |
@@ -29,14 +29,15 @@ and look in the UniFi client list. A device with a hand-set static IP does not a
 | `.54` | `ymir` | Synology NAS | UniFi fixed IP | `ymir.kornoglab.fr`. NFS: `data`, `proxmox-backup` |
 | `.190` | Shelly Pro 3EM | energy meter | UniFi fixed IP | MAC suffix `66:64` |
 
-## Reserved for orisa guests (not created yet)
+## Guests on orisa
 
-| IP | VMID | Guest | Role |
-|---|---|---|---|
-| `.21` | 121 | `rproxy` | Traefik. All `*.kornoglab.fr` A records will point here after the migration |
-| `.22` | 122 | `jellyfin` | Jellyfin with iGPU |
-| `.23` | 123 | `arr` | *arr apps, qBittorrent + gluetun, Seerr, Homarr, Calibre-web |
-| `.24` | 124 | `services` | `kornogHosted` services (postgres, valkey, zigbee2mqtt, ...) |
+| IP | VMID | Guest | Role | State |
+|---|---|---|---|---|
+| `.21` | 121 | `rproxy` | Traefik, all `*.kornoglab.fr` A records point here | running |
+| `.22` | 122 | `jellyfin` | Jellyfin with iGPU | running |
+| `.23` | 123 | `arr` | *arr apps, qBittorrent + gluetun, Seerr, Homarr, Calibre-web | running |
+| `.24` | 124 | `services` | `kornogHosted` services (postgres, valkey, zigbee2mqtt, ...) | reserved, not created |
+| `.25` | 125 | `auth` | Authelia, see [auth-and-hardening-plan.md](auth-and-hardening-plan.md) | planned, not created |
 
 Convention: guest VMID = `1` + last octet (`.21` is VMID `121`). Guests use static addresses set in their LXC network config.
 

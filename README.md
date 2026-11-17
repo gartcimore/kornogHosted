@@ -84,15 +84,17 @@ LAN name resolution for the `kornoglab.fr` services is handled by **UniFi Local
 DNS records** on the Cloud Gateway — not by the `dnsmasq/` service in this repo
 (that was a never-deployed WIP, see note below).
 
-Each service hostname is an individual **A record** pointing at the host that
-runs its reverse proxy. Today that is **heimdall (`192.168.0.20`)**, which runs
-the `parr` stack's Traefik. Traefik terminates TLS with the wildcard
-`*.kornoglab.fr` Let's Encrypt cert produced by the [`acme`](acme/) container
-and shared to heimdall over NFS.
+Each service hostname is an individual **A record** pointing at the reverse
+proxy, **`rproxy` (`192.168.0.21`)**, an LXC guest on the Proxmox host orisa
+(see [`rproxy/`](rproxy/) and [`docs/orisa-proxmox-setup.md`](docs/orisa-proxmox-setup.md)).
+Its Traefik terminates TLS with the wildcard `*.kornoglab.fr` Let's Encrypt cert
+produced by the [`acme`](acme/) container (shared over NFS) and forwards by
+hostname to the guest that runs the service. Routes are files, not Docker labels,
+because the services are in different guests.
 
 ```
-client → UniFi gateway DNS → <service>.kornoglab.fr = 192.168.0.20 (heimdall)
-       → Traefik :443 (wildcard cert) → routes by hostname to the container
+client → UniFi gateway DNS → <service>.kornoglab.fr = 192.168.0.21 (rproxy)
+       → Traefik :443 (wildcard cert) → file route → http://<guest>:<port>
 ```
 
 ### Where to manage records
@@ -101,54 +103,50 @@ UniFi Network → **Settings → Routing & Firewall → DNS → DNS Records**
 (Policy Engine → DNS Records on some firmware). Create a **Host (A)** policy:
 
 - **Domain Name:** `<service>.kornoglab.fr`
-- **IP Address:** `192.168.0.20`
+- **IP Address:** `192.168.0.21`
 - **TTL:** Auto
 
 UniFi Local DNS does **not** support wildcards — every hostname is a separate
-record. heimdall itself is a fixed IP (`192.168.0.20`) reserved in UniFi, so the
-target address is stable.
+record. The guests have fixed addresses, listed in [`docs/ip-inventory.md`](docs/ip-inventory.md).
 
 ### When to add a new record
 
-Add a UniFi A record (→ `192.168.0.20`) **whenever a new service gets a
-hostname-based Traefik route** (a `Host(\`<name>.kornoglab.fr\`)` router in the
-`parr` repo's `docker-compose.yml`). DNS and the Traefik router are two halves
-of the same change:
+Add a UniFi A record (→ `192.168.0.21`) **whenever a service gets a hostname**.
+DNS and the Traefik route are two halves of the same change:
 
-1. Add the `-tls` / `-http` router pair in `parr/docker-compose.yml`.
-2. Add the matching UniFi A record here.
+1. Add a router and service to a file in `rproxy/traefik/dynamic/`
+   (`routes-arr.yml`, `routes-jellyfin.yml`, or a new `routes-<guest>.yml`).
+   The file provider does not expand variables, write the domain out.
+2. Deploy it: `cd ansible && ansible-playbook site.yml --limit rproxy --tags stacks`.
+3. Add the matching UniFi A record here.
 
-A record with no matching Traefik router still resolves but returns a Traefik
-404 — harmless, so records may be created ahead of the router.
+A record with no matching route still resolves but returns a Traefik 404 —
+harmless, so records may be created ahead of the route. Test a route before
+moving DNS with `curl --resolve <name>:443:192.168.0.21 https://<name>/`.
 
-### Current records (all → `192.168.0.20` unless noted)
+### Current records
 
-| Hostname | Traefik HTTPS router exists? |
-|----------|------------------------------|
-| `radarr.kornoglab.fr`      | yes |
-| `sonarr.kornoglab.fr`      | yes |
-| `bazarr.kornoglab.fr`      | yes |
-| `jellyfin.kornoglab.fr`    | **moved:** → `192.168.0.21` (`rproxy` on orisa, see `rproxy/`), which forwards to the Jellyfin guest `192.168.0.22:8096` |
-| `seerr.kornoglab.fr`       | yes |
-| `lidarr.kornoglab.fr`      | yes |
-| `prowlarr.kornoglab.fr`    | yes |
-| `homarr.kornoglab.fr`      | yes |
-| `webhook.kornoglab.fr`     | yes (host-side webhook, basic-auth via token) |
-| `heimdall.kornoglab.fr`    | yes (Traefik dashboard, basic auth) |
-| `qbittorrent.kornoglab.fr` | yes (websecure route; qbit runs behind gluetun) |
-| `qbt.kornoglab.fr`         | yes (alias — same qbittorrent router) |
+| Hostname | → | Served by |
+|----------|---|-----------|
+| `radarr`, `sonarr`, `bazarr`, `lidarr`, `prowlarr`, `seerr`, `homarr`, `books` (`.kornoglab.fr`) | `192.168.0.21` | `arr` guest `192.168.0.23` (ports in `rproxy/traefik/dynamic/routes-arr.yml`) |
+| `qbittorrent`, `qbt` | `192.168.0.21` | same route: gluetun `192.168.0.23:8080` (qBittorrent runs behind gluetun) |
+| `jellyfin` | `192.168.0.21` | `jellyfin` guest `192.168.0.22:8096` |
+| `heimdall` | `192.168.0.20` | the Raspberry Pi itself (no longer runs the stack or a dashboard) |
+| `orisa` | `192.168.0.12` | the Proxmox host |
+
+The `webhook` record and heimdall's Traefik dashboard are gone.
 
 To verify a record resolves from a client:
 
 ```bash
-dig +short radarr.kornoglab.fr      # expect 192.168.0.20
+dig +short radarr.kornoglab.fr         # expect 192.168.0.21
 curl -I https://radarr.kornoglab.fr/   # expect a response + valid cert (no -k)
 ```
 
-### Device records (not behind heimdall's Traefik)
+### Device records (not behind rproxy)
 
 A few names point at other hosts and are served by those devices directly, not
-through heimdall's Traefik:
+through rproxy:
 
 | Hostname | IP | Served by |
 |----------|----|-----------|
@@ -157,7 +155,8 @@ through heimdall's Traefik:
 | `ha.kornoglab.fr` | (via nginx-proxy) | **configured but NOT in use** — Home Assistant lives at `192.168.0.30:8123` and is currently reached via the old LAN name `homeassistant.becquerel`. The `nginx-proxy/` container has an `ha.conf` route but it was never adopted. To make it real, prefer DSM's Login Portal → Reverse Proxy over the nginx-proxy container. |
 
 So there are two patterns for a LAN hostname:
-- **Traefik-fronted** (`<service>.kornoglab.fr` → `192.168.0.20`): a container in the `parr` stack with Traefik labels. Add a UniFi A record + the router.
+
+- **Proxied** (`<service>.kornoglab.fr` → `192.168.0.21`): a file route in `rproxy/traefik/dynamic/` to the guest running the service. Add a UniFi A record + the route.
 - **Device-direct** (`ymir`/`drogo`): point the UniFi A record at the device's own IP and let the device serve itself (DSM customized-domain + imported wildcard cert). No Traefik involved.
 
 > **Note on `dnsmasq/`:** that service resolves `*.kornoglab.fr` to the Synology

@@ -1,6 +1,6 @@
 # Plan: the `arr` guest (CT 123)
 
-Status: **prepared, not applied.** Written 2026-11-16 after reading `parr/docker-compose.yml`, `.env.sample`, `arr.service` and the webhook files. The Ansible role changes, `arr/` files and `host_vars/arr.yml` exist and pass lint and a dry run; the guest has not been created.
+Status: **done, running since 2026-11-17.** Cutover finished: data copied, stack started in the guest, `rproxy` routes deployed, UniFi records moved to `192.168.0.21`. Remaining: the deferred Homarr integration edits (step 7) and retiring heimdall after a few days. Written after reading `parr/docker-compose.yml`, `.env.sample`, `arr.service` and the webhook files.
 
 Target: LXC `arr`, `192.168.0.23`, VMID 123 (reserved in [ip-inventory.md](ip-inventory.md)). It runs the `parr` stack without Traefik, Jellyfin and the webhook.
 
@@ -78,6 +78,64 @@ Still to do:
 5. Add `routes-arr.yml` to `rproxy`, move the UniFi records to `192.168.0.21`, test through the hostnames.
 6. Re-point anything outside the stack that used heimdall's address.
 7. Leave heimdall's stack stopped for a week, then retire it.
+
+## Cutover runbook
+
+Spike done 2026-11-17: gluetun connects in the unprivileged guest (kernel WireGuard, port forwarding works), UID 1000 writes reach Ymir (hardlinks work, `media/tv` writable) and drogo, the guest is created and Docker is installed, the stack files are in `/opt/parr`, nothing is started. Choose a quiet moment: downloads, the *arr apps, Seerr and Homarr are down from step 2 until step 6.
+
+**0. Preflight (read-only).**
+```bash
+# heimdall: files the copy cannot read as gart (should print nothing)
+find /docker/appdata/{bazarr,calibre-web-automated,gluetun,homarr,lidarr,prowlarr,qbittorrent,radarr,seerr,sonarr} ! -readable 2>/dev/null | head
+# heimdall: apps pointing at heimdall by address or name (they must be changed after the move)
+grep -rIl -E '192\.168\.0\.20|heimdall' /docker/appdata/{bazarr,homarr,lidarr,prowlarr,radarr,seerr,sonarr} 2>/dev/null | head
+```
+If the first prints files, copy with `sudo tar` instead (run the whole line on heimdall with `sudo -v` done first).
+
+**1. Stop heimdall's stack.** `sudo systemctl stop arr`, then `docker ps` must show no parr container. Also `sudo systemctl disable arr` so a reboot of heimdall cannot start a second VPN session. Never run both stacks: same VPN account and the same Ymir paths.
+
+**2. Copy the data** (from pachimari, streamed, numeric owners kept, Jellyfin and logs left out):
+```bash
+for d in bazarr calibre-web-automated gluetun homarr lidarr prowlarr qbittorrent radarr seerr sonarr; do
+  ssh gart@heimdall.becquerel "tar -C /docker/appdata --numeric-owner -cf - $d" \
+    | ssh root@192.168.0.23 "mkdir -p /docker/appdata && tar -C /docker/appdata --numeric-owner -xpf -" \
+    && echo "copied $d"
+done
+ssh root@192.168.0.23 'du -sh /docker/appdata/* ; ls -ln /docker/appdata | head -4'
+```
+Sizes should match heimdall's (about 1.3 GB in total).
+
+**3. Start the stack in the guest** (installs and enables the unit and restarts it):
+```bash
+cd ansible && ~/.local/bin/ansible-playbook site.yml --limit arr --tags stacks
+ssh root@192.168.0.23 'docker ps --format "{{.Names}}\t{{.Status}}"'
+```
+Expect 11 containers up, `gluetun (healthy)`. The watchdog log should show qBittorrent's port being synced to gluetun's forwarded port.
+
+**4. Test each app by address** (200, 301, 302 or 401 are fine, 000 or 5xx is not):
+```bash
+for p in 9696:prowlarr 7878:radarr 8989:sonarr 6767:bazarr 8686:lidarr 5055:seerr 7575:homarr 8080:qbittorrent 8083:books; do
+  printf '%-12s' "${p#*:}"; curl -s -o /dev/null -m 5 -w '%{http_code}\n' "http://192.168.0.23:${p%%:*}/"; done
+```
+Then in each app: Radarr and Sonarr download client test (`gluetun:8080`) and indexers, Prowlarr app sync, Bazarr providers, Seerr servers, and fix everything the preflight grep listed.
+
+Bazarr, Seerr and Prowlarr reach Radarr and Sonarr through `radarr.kornoglab.fr` and `sonarr.kornoglab.fr`. Until the DNS records move (step 6) those names still resolve to heimdall, so their connection tests fail at this point. Test those integrations after step 6, not here.
+
+**5. Routes.** The old `routes-heimdall.yml` (a temporary Radarr route) is deleted in this change, and `routes-arr.yml` defines Radarr, so remove the stale copy on the proxy before deploying:
+```bash
+ssh root@192.168.0.21 'rm -f /opt/rproxy/traefik/dynamic/routes-heimdall.yml'
+cd ansible && ~/.local/bin/ansible-playbook site.yml --limit rproxy --tags stacks
+for h in prowlarr radarr sonarr bazarr lidarr seerr homarr qbittorrent qbt books; do
+  printf '%-12s' $h; curl -s -o /dev/null -m 5 -w '%{http_code} ssl=%{ssl_verify_result}\n' --resolve $h.kornoglab.fr:443:192.168.0.21 https://$h.kornoglab.fr/; done
+```
+
+**6. DNS.** In UniFi, move these A records from `192.168.0.20` to `192.168.0.21`: prowlarr, radarr, sonarr, bazarr, lidarr, seerr, homarr, qbittorrent, qbt, books. Delete `webhook` and `heimdall` (Traefik dashboard and the reboot webhook are gone). Update the table in the repo README.
+
+**7. Afterwards.**
+- Homarr integrations (deferred, not needed for the cutover; their widgets show errors until done). In Homarr > Management > Integrations set the URL to the container name and enter the API key again when saving: Radarr `http://radarr:7878`, Sonarr `http://sonarr:8989`, Lidarr `http://lidarr:8686`, Prowlarr `http://prowlarr:9696/`, Seer `http://seerr:5055`, qBittorrent `http://gluetun:8080`. Keys: each app's Settings > General (Seerr: Settings > General).
+- Remove Homarr's `traefik` tile (link to `heimdall.kornoglab.fr/dashboard/`) from the board and the app, and the reboot-button widget.
+- Anything outside the stack that used heimdall's address or the old path URLs (`http://<heimdall>/radarr`) needs the new hostnames.
+- Watch `df -h` and `sensors` on orisa for a few days.
 
 ## Rollback
 

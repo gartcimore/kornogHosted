@@ -27,15 +27,16 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 - [x] Step 8 (`jellyfin`): LXC 122 at `192.168.0.22` (4 cores, 4 GB RAM, 16 GB disk, start order 2), created by the Ansible playbook. Media mounted read-only at `/mnt/dataYmir/media`, iGPU passed through (see "Pass through the iGPU"), hardware transcoding verified. Currently a fresh Jellyfin with a throwaway admin: heimdall's config (4.4 GB) is not migrated yet and DNS still points at heimdall.
 - [x] Backup job `backup-c3366771-401a` (02:00, all guests, `ymir-backup`) exists; restore of `rproxy` tested.
 
+- [x] Step 8 (`arr`): LXC 123 at `192.168.0.23` (4 cores, 6 GB RAM, 24 GB disk, start order 3), created by the Ansible playbook with UID/GID 1000 mapped to host 1000, `/dev/net/tun`, and read-write mounts of Ymir (`/mnt/dataYmir`, NFS) and drogo (`/mnt/dataDrogoRW` on the host, `/mnt/data` in the guest). Runs the `parr` stack (pinned commit, plus `arr/docker-compose.override.yml`, which turns Traefik and socket-proxy off) under `arr.service`. gluetun connects with kernel WireGuard (module loaded at boot by the playbook). Data copied from heimdall's `/docker/appdata` on 2026-11-17 and verified (file counts and sizes identical). Routes in `rproxy/traefik/dynamic/routes-arr.yml`, UniFi records moved to `192.168.0.21`. Details and lessons: [arr-guest-plan.md](arr-guest-plan.md).
+- Drogo is mounted twice on the host: `/mnt/dataDrogo` (read-only, owner 101000, for jellyfin) and `/mnt/dataDrogoRW` (read-write, owner 1000, for arr). Each guest's own `mpN` line decides which one it sees.
+
 ### Where we stopped / next
 
-1. `jellyfin` is migrated (2026-11-16): drogo mounted on the host (CIFS, read-only, mapped to the guest's UID 1000) and bind-mounted into CT 122, heimdall's 4.4 GB config copied with `tar` over SSH (VAAPI `encoding.xml` kept from the fresh install), route in `rproxy/traefik/dynamic/routes-jellyfin.yml`, UniFi record `jellyfin.kornoglab.fr` -> `192.168.0.21`, Seerr/Radarr/Sonarr/Homarr re-pointed. heimdall's container is stopped and kept for rollback (remove it from the `parr` compose, then `docker rm` after about a week). To do: set Known proxies to `192.168.0.21` in Jellyfin (Dashboard > Networking) if not done.
-   - Rollback: point the UniFi record back to `192.168.0.20` and `docker start jellyfin` on heimdall.
-   - Library paths in the Jellyfin database are `/mediaYmir` and `/mediaDrogo`; keep these container paths.
-   - Integrations should use the guest address (`http://192.168.0.22:8096`), not the `rproxy` hostname: they then do not depend on `rproxy` or on the wildcard certificate renewing. Hostnames are for browsers and client apps.
-   - Homarr refuses to save an edited integration with `No secret defined for this integration` (visible in `docker logs homarr`) until the API key is entered again on the API Key tab, even though one is stored.
-2. Next: build the `arr` guest (`/dev/net/tun`, `/mnt/dataYmir` read-write, UID 1000 id-map, `root:1000:1` in `/etc/subuid` and `/etc/subgid`) and `services`.
-3. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
+1. Check the app integrations that use hostnames after the DNS move (Prowlarr apps, Bazarr, Seerr, download clients). Deferred Homarr integration edits and tile removal: see step 7 of the runbook in `arr-guest-plan.md`.
+2. Watch `df -h` and `sensors` on orisa for a few days (transcoding plus the *arr stack). Retire heimdall's stack for good after about a week: remove its stopped containers, then the data it still holds in `/docker/appdata` (the rollback copy, about 6 GB with Jellyfin).
+3. Build the `services` guest (postgres, valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks.
+4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
+5. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible, remove `gluetun.spike` from the `arr` guest.
 
 > Commands marked `# host` run in a shell on orisa (web UI Shell, console or SSH). Check your version first with `pveversion`. Proxmox VE 8 (Debian 12) and 9 (Debian 13) differ in apt source file format (see step 1).
 
