@@ -1,0 +1,33 @@
+---
+# Native PostgreSQL for the `db` guest (Debian 13 packages, no Docker).
+# `postgres_server_services` is set per host in host_vars/db.yml.
+postgres_server_version: 17
+postgres_server_fqdn: db.kornoglab.fr
+# One role and one database per entry, both named `name`. `clients` is a list of
+# IPv4 addresses allowed to connect over TLS. An empty list creates the role and
+# database but opens no network access (a message names the service).
+postgres_server_services: []
+# Sized for a 2 GB guest (see docs/orisa-proxmox-setup.md, section 7c).
+postgres_server_max_connections: 50
+postgres_server_shared_buffers: 256MB
+postgres_server_effective_cache_size: 1GB
+postgres_server_work_mem: 4MB
+postgres_server_maintenance_work_mem: 64MB
+# Passwords: plain-text file on the controller, never committed (git-secret).
+# One PG_PASSWORD_<NAME>=... line per service, made by postgres/make-secrets.sh.
+postgres_server_secrets_file: "{{ playbook_dir }}/../postgres/db-passwords.env"
+# Server certificate: the wildcard certificate from the acme container, mounted read-only.
+postgres_server_certs_src: /certs
+postgres_server_tls_dir: /etc/postgresql/tls
+# Logical backups. The directory must be a bind mount of a folder on Ymir that holds
+# the sentinel file, otherwise the dump refuses to run.
+postgres_server_backup_dir: /mnt/pgbackup
+postgres_server_backup_sentinel: .pgbackup-sentinel
+postgres_server_backup_time: "03:30"
+postgres_server_backup_keep_daily: 14
+postgres_server_backup_keep_monthly: 6
+# Failure notification through a Discord webhook (same pattern as nut_client).
+postgres_server_notify_enabled: true
+postgres_server_discord_env_local: "{{ playbook_dir }}/../nut/discord.env"
+postgres_server_discord_env: /etc/postgresql/discord.env
+postgres_server_sbin: /usr/local/sbin

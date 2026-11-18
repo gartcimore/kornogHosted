@@ -1,0 +1,58 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Copies the wildcard certificate from the read-only mount into a directory PostgreSQL
+# can use (it refuses a key readable by others), then reloads PostgreSQL.
+# Every check runs before anything is changed. On any failure the current copy stays
+# in place and the exit status is not 0. Prints "installed" or "unchanged".
+set -euo pipefail
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+SRC={{ postgres_server_certs_src | quote }}
+DEST={{ postgres_server_tls_dir | quote }}
+FQDN={{ postgres_server_fqdn | quote }}
+VER={{ postgres_server_version }}
+KEEP=3
+fail() { echo "pg-tls-sync: $*" >&2; exit 1; }
+cert=$SRC/fullchain.pem
+key=$SRC/key.pem
+for f in "$cert" "$key"; do
+  [[ -f $f && -r $f ]] || fail "$f is missing or not readable"
+  [[ -s $f ]] || fail "$f is empty"
+done
+openssl x509 -in "$cert" -noout 2>/dev/null || fail "$cert is not a certificate"
+openssl x509 -in "$cert" -noout -checkend 0 >/dev/null || fail "certificate is expired"
+openssl x509 -in "$cert" -noout -checkhost "$FQDN" 2>/dev/null | grep -q 'does match' \
+  || fail "certificate does not cover $FQDN"
+pub_cert=$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null | sha256sum) || fail "cannot read the certificate public key"
+pub_key=$(openssl pkey -in "$key" -pubout 2>/dev/null | sha256sum) || fail "$key is not a private key"
+[[ $pub_cert == "$pub_key" ]] || fail "the key does not belong to the certificate"
+if cmp -s "$cert" "$DEST/current/fullchain.pem" 2>/dev/null && cmp -s "$key" "$DEST/current/key.pem" 2>/dev/null; then
+  echo unchanged
+  exit 0
+fi
+mkdir -p "$DEST"
+new=$DEST/$(date +%Y%m%d%H%M%S)
+previous=$(readlink "$DEST/current" 2>/dev/null || true)
+install -d -o postgres -g postgres -m 0750 "$new"
+install -o postgres -g postgres -m 0644 "$cert" "$new/fullchain.pem"
+install -o postgres -g postgres -m 0600 "$key" "$new/key.pem"
+ln -sfn "$new" "$DEST/current.tmp"
+mv -T "$DEST/current.tmp" "$DEST/current"
+if systemctl is-active --quiet "postgresql@${VER}-main"; then
+  if ! pg_ctlcluster "$VER" main reload; then
+    # Put the old copy back so the next run tries again.
+    if [[ -n $previous ]]; then
+      ln -sfn "$previous" "$DEST/current.tmp"
+      mv -T "$DEST/current.tmp" "$DEST/current"
+    else
+      rm -f "$DEST/current"
+    fi
+    rm -rf "$new"
+    fail "PostgreSQL reload failed, previous certificate kept"
+  fi
+fi
+# Keep the newest copies, drop the rest (never the one in use).
+cur=$(readlink "$DEST/current")
+for d in $(find "$DEST" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{14}' | sort -r | tail -n +$((KEEP + 1))); do
+  [[ $d == "$cur" ]] || rm -rf "$d"
+done
+echo installed

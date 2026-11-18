@@ -11,7 +11,7 @@
       tags: [lxc]
 
 - name: Guest software
-  hosts: guests
+  hosts: guests:!native_guests
   tasks:
     - name: Wait for the guest to accept SSH
       ansible.builtin.wait_for_connection:
@@ -31,3 +31,16 @@
         apply:
           tags: [stacks]
       tags: [stacks]
+- name: Native guest software
+  hosts: native_guests
+  tasks:
+    - name: Wait for the guest to accept SSH
+      ansible.builtin.wait_for_connection:
+        timeout: 120
+      tags: [always]
+    - name: PostgreSQL
+      ansible.builtin.include_role:
+        name: postgres_server
+        apply:
+          tags: [postgres]
+      tags: [postgres]

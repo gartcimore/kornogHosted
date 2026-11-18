@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+# Local: only the postgres OS user (peer). Remote: TLS and scram only, one line per
+# service and client, limited to that service's role and database.
+local   all   postgres   peer
+local   all   all        reject
+{% for s in postgres_server_services %}
+{% for c in s.clients | default([]) %}
+hostssl {{ s.name }} {{ s.name }} {{ c }}/32 scram-sha-256
+{% endfor %}
+{% endfor %}
+host    all   all   all   reject

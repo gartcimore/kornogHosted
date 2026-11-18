@@ -1,0 +1,47 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Logical backup: globals.sql (roles) and one custom-format dump per database, written
+# to the folder on Ymir. Refuses to run if that folder is not the mounted share, so a
+# lost mount can never fill the guest's own disk. Runs as root; files are mode 0600.
+set -euo pipefail
+umask 077
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+DIR={{ postgres_server_backup_dir | quote }}
+SENTINEL=$DIR/{{ postgres_server_backup_sentinel }}
+KEEP_DAILY={{ postgres_server_backup_keep_daily }}
+KEEP_MONTHLY={{ postgres_server_backup_keep_monthly }}
+DBS=({% for s in postgres_server_services %}{{ s.name | quote }} {% endfor %})
+fail() { echo "pg-backup: $*" >&2; exit 1; }
+mountpoint -q "$DIR" || fail "$DIR is not a mount point, nothing written"
+[[ -f $SENTINEL ]] || fail "sentinel $SENTINEL not found, nothing written"
+cd /
+stamp=$(date +%F)
+tmp=$DIR/$stamp.partial
+final=$DIR/$stamp
+rm -rf "$tmp"
+mkdir "$tmp"
+pgrun() { runuser -u postgres -- "$@"; }
+pgrun pg_dumpall --globals-only > "$tmp/globals.sql"
+[[ -s $tmp/globals.sql ]] || fail "empty globals dump"
+for db in "${DBS[@]}"; do
+  pgrun pg_dump --format=custom "$db" > "$tmp/$db.dump"
+  pg_restore --list "$tmp/$db.dump" > /dev/null || fail "dump of $db is not readable"
+done
+if [[ -e $final ]]; then
+  mv "$final" "$final.replaced"
+  mv "$tmp" "$final"
+  rm -rf "$final.replaced"
+else
+  mv "$tmp" "$final"
+fi
+# Only after a good run: keep the newest daily folders and the 1st of the newest months.
+mapfile -t all < <(find "$DIR" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}' -printf '%f\n' | sort)
+declare -A keep=()
+while read -r n; do [[ -n $n ]] && keep[$n]=1; done < <(printf '%s\n' "${all[@]}" | tail -n "$KEEP_DAILY")
+while read -r n; do [[ -n $n ]] && keep[$n]=1; done < <(printf '%s\n' "${all[@]}" | grep -E -- '-01$' | tail -n "$KEEP_MONTHLY" || true)
+for n in "${all[@]}"; do
+  [[ -n ${keep[$n]:-} ]] || rm -rf "${DIR:?}/$n"
+done
+# Leftovers of runs that died half way (older than today's).
+find "$DIR" -mindepth 1 -maxdepth 1 -type d -name '*.partial' ! -name "$stamp.partial" -exec rm -rf {} +
+echo "pg-backup: $stamp done"

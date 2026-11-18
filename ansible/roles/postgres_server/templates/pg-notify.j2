@@ -1,0 +1,23 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Sends "<host>: <unit> failed" to Discord. Never fails the caller, never prints the URL.
+# The webhook URL is read from the env file (never sourced) and passed to curl on stdin.
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+ENV_FILE={{ postgres_server_discord_env | quote }}
+unit=${1:-unknown}
+[[ $unit =~ ^[A-Za-z0-9@_.:-]{1,100}$ ]] || unit=unknown
+text="$(hostname -s): $unit failed at $(date '+%F %T')"
+logger -t pg-notify -p daemon.err -- "$text"
+url=$(sed -n 's/^DISCORD_WEBHOOK_URL=//p' "$ENV_FILE" 2>/dev/null | head -n 1 | tr -d "\"'\r")
+if [[ ! $url =~ ^https:// ]]; then
+  logger -t pg-notify -p daemon.warning -- "no Discord webhook in $ENV_FILE, not sent"
+  exit 0
+fi
+# The text only holds characters validated above, so it is safe inside JSON.
+payload=$(printf '{"content": "%s", "allowed_mentions": {"parse": []}}' "$text")
+printf 'url = "%s"\n' "$url" | curl --silent --show-error --output /dev/null \
+  --connect-timeout 3 --max-time 10 \
+  --header 'Content-Type: application/json' --data-binary "$payload" --config - \
+  2>/dev/null || logger -t pg-notify -p daemon.warning -- "Discord message failed (ignored)"
+exit 0

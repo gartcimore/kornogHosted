@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# A path unit does not see changes made by another host on NFS, so this polls.
+[Unit]
+Description=Keep the PostgreSQL certificate copy fresh
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*-*-* 04:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,47 @@
+---
+# Everything here goes through the local socket as the postgres OS user.
+# Passwords come from the controller file and never reach the output.
+- name: Application roles (never superusers)
+  community.postgresql.postgresql_user:
+    name: "{{ item.name }}"
+    password: "{{ lookup('ansible.builtin.ini', 'PG_PASSWORD_' ~ (item.name | upper) ~ ' type=properties file=' ~ postgres_server_secrets_file) }}"
+    role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE
+    login_user: postgres
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  loop: "{{ postgres_server_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  diff: false
+- name: Databases (UTF-8, owned by their role)
+  community.postgresql.postgresql_db:
+    name: "{{ item.name }}"
+    owner: "{{ item.name }}"
+    encoding: UTF8
+    lc_collate: C.UTF-8
+    lc_ctype: C.UTF-8
+    template: template0
+    login_user: postgres
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  loop: "{{ postgres_server_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+- name: Other roles cannot connect to the database
+  community.postgresql.postgresql_privs:
+    type: database
+    objs: "{{ item.name }}"
+    roles: PUBLIC
+    privs: ALL
+    state: absent
+    login_db: "{{ item.name }}"
+    login_user: postgres
+    login_unix_socket: /var/run/postgresql
+  become: true
+  become_user: postgres
+  loop: "{{ postgres_server_services }}"
+  loop_control:
+    label: "{{ item.name }}"

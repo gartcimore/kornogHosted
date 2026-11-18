@@ -1,0 +1,11 @@
+---
+- name: Check the service list and the secrets before touching the host
+  ansible.builtin.import_tasks: precheck.yml
+- name: Install PostgreSQL, TLS and backup tooling
+  ansible.builtin.import_tasks: install.yml
+- name: Configure the server
+  ansible.builtin.import_tasks: configure.yml
+- name: Create roles and databases
+  ansible.builtin.import_tasks: databases.yml
+- name: Logical backups and failure notification
+  ansible.builtin.import_tasks: backup.yml

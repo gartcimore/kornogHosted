@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Copy the wildcard certificate for PostgreSQL
+Documentation=file:///usr/share/doc/postgresql-common
+After=local-fs.target remote-fs.target
+OnFailure=postgres-failure-notify@%n.service
+
+[Service]
+Type=oneshot
+ExecStart={{ postgres_server_sbin }}/pg-tls-sync

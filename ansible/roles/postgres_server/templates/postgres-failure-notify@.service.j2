@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Tell Discord that %i failed
+
+[Service]
+Type=oneshot
+ExecStart={{ postgres_server_sbin }}/pg-notify %i

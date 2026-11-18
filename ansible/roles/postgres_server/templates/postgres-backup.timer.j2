@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+# After the 02:00 vzdump job.
+[Unit]
+Description=Nightly logical PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* {{ postgres_server_backup_time }}:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

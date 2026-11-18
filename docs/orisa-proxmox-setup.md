@@ -29,6 +29,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 - [x] Backup job `backup-c3366771-401a` (02:00, all guests, `ymir-backup`) exists; restore of `rproxy` tested.
 
 - [x] Step 8 (`arr`): LXC 123 at `192.168.0.23` (4 cores, 6 GB RAM, 24 GB disk, start order 3), created by the Ansible playbook with UID/GID 1000 mapped to host 1000, `/dev/net/tun`, and read-write mounts of Ymir (`/mnt/dataYmir`, NFS) and drogo (`/mnt/dataDrogoRW` on the host, `/mnt/data` in the guest). Runs the `parr` stack (pinned commit, plus `arr/docker-compose.override.yml`, which turns Traefik and socket-proxy off) under `arr.service`. gluetun connects with kernel WireGuard (module loaded at boot by the playbook). Data copied from heimdall's `/docker/appdata` on 2026-11-17 and verified (file counts and sizes identical). Routes in `rproxy/traefik/dynamic/routes-arr.yml`, UniFi records moved to `192.168.0.21`. Details and lessons: [arr-guest-plan.md](arr-guest-plan.md).
+- [ ] PostgreSQL service: LXC `db` (126, `192.168.0.26`, native PostgreSQL 17, TLS, nightly dumps to Ymir), Ansible role `postgres_server`, **prepared, not applied**. See [section 7c](#7c-postgresql-service-db-guest--prepared-not-applied).
 - [ ] UPS and safe shutdown: Ansible role `nut_client` written and dry-run checked, **prepared, not applied** (orisa does not read the UPS yet). See [section 7b](#7b-ups-and-safe-shutdown).
 - Drogo is mounted twice on the host: `/mnt/dataDrogo` (read-only, owner 101000, for jellyfin) and `/mnt/dataDrogoRW` (read-write, owner 1000, for arr). Each guest's own `mpN` line decides which one it sees.
 
@@ -36,7 +37,8 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 
 1. Check the app integrations that use hostnames after the DNS move (Prowlarr apps, Bazarr, Seerr, download clients). Deferred Homarr integration edits and tile removal: see step 7 of the runbook in `arr-guest-plan.md`.
 2. Watch `df -h` and `sensors` on orisa for a few days (transcoding plus the *arr stack). Retire heimdall's stack for good after about a week: remove its stopped containers, then the data it still holds in `/docker/appdata` (the rollback copy, about 6 GB with Jellyfin).
-3. Build the `services` guest (postgres, valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks.
+3. Build the `services` guest (valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks. PostgreSQL no longer goes there: it has its own guest `db` (next item).
+3b. Apply the `db` PostgreSQL guest (prepared, not applied): commands and open points in [section 7c](#7c-postgresql-service-db-guest--prepared-not-applied).
 4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
 5. Apply the `nut_client` role (webhook file, dry run, `--tags nut`, checks: section 7b), then set the BIOS "power on after AC loss".
 6. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
@@ -154,6 +156,7 @@ Notes:
 - [ ] Add a UniFi Local DNS A record: `orisa.kornoglab.fr` -> `192.168.0.12` (see the main README, "Local DNS").
 - [ ] Use the wired NIC for `vmbr0`. Ignore the Wi-Fi 6 card (disable in BIOS if you want).
 - [ ] BIOS: enable SVM (AMD-V), IOMMU, and "Restore on AC power loss = Power On".
+- [ ] BIOS (optional): lowering the iGPU memory reservation from 3 GB would free RAM for the host. Its effect on Jellyfin hardware transcoding is not verified, so test transcoding after any change.
 - [ ] Optional Proxmox firewall: Datacenter > Firewall. Before enabling, add a rule allowing `192.168.0.0/24` to TCP 22 and 8006, or you will lock yourself out. Enable at Datacenter level last.
 
 ### 4b. Rack move: LACP bond of both NICs (applied 2026-11-18)
@@ -367,6 +370,124 @@ The server has "Login Credential" off, so it should not check anything. That is 
 
 ---
 
+## 7c. PostgreSQL service (`db` guest) — prepared, not applied
+
+Shared PostgreSQL for the other services, in its own LXC guest `db` (VMID 126, `192.168.0.26`, name `db.kornoglab.fr`). Native Debian 13 packages, no Docker. It replaces the old, never-used `postgres/` compose folder. Code: Ansible role [`postgres_server`](../ansible/roles/postgres_server), guest definition and service list in [`ansible/host_vars/db.yml`](../ansible/host_vars/db.yml). Nothing of it has been applied to orisa yet.
+
+### Decisions and why
+
+| Topic | Choice | Reason |
+|---|---|---|
+| Guest | own unprivileged LXC `db`, `192.168.0.26`, VMID 126 | one guest per service when possible |
+| Software | PostgreSQL **17** (`postgresql` package of Debian 13, candidate `17.12-0+deb13u1` read on orisa 2026-11-18) | the packaged major version. Infisical's documentation names 16 as its tested version and recommends 14 or newer, Authelia supports any version still supported upstream |
+| Docker | none | the inventory group `native_guests` holds `db`. The Docker and compose play runs on `guests:!native_guests`, so `rproxy`, `jellyfin` and `arr` match exactly as before. `lxc_guest` still creates `db` because it is also in `guests` |
+| Start order | `order=1` | no `up=` delay. It ties with `rproxy` (1) and Proxmox starts the lower VMID first, so `rproxy` goes first. `rproxy` does not need the database. Clients (the future `auth` guest and Infisical's host) must use order 2 or higher. Shutdown runs in reverse order, so `db` stops after its clients |
+| CPU / RAM / swap | 2 cores, 2048 MB, 256 MB | see below |
+| Disk | 8 GB (proposal, open point) | Debian plus PostgreSQL is about 1.5 GB, two small databases stay in the MB range, dumps live on Ymir. Growing later is easy (`pct resize`), shrinking is not. 16 GB would also work |
+| `shared_buffers` | 256 MB (proposal, open point) | used lazily, sized to a 2 GB guest on a shared host |
+| `effective_cache_size` / `work_mem` / `maintenance_work_mem` | 1 GB / 4 MB / 64 MB | sized to the guest |
+| `max_connections` | 50 | Authelia and Infisical use connection pools. Infisical's documentation says a rolling deploy briefly doubles the connections |
+
+**Memory.** The host reports 12.7 GB (the iGPU reserves 3 GB). On 2026-11-18 about 3.7 GB were used and 8.9 GB available. Guest limits are caps, not reservations: rproxy 512 MB, jellyfin 4096 MB and arr 6144 MB already add up to more than the host, because their real use is small (rproxy 80 MB, jellyfin 287 MB, arr 1077 MB, the rest is reclaimable cache). 2 GB for `db` is a cap that two small databases will not approach. `shared_buffers` is used lazily, so 256 MB costs nothing until the data needs it. About 512 MB would also fit; the smaller value is proposed for a 2 GB guest. All values are `postgres_server_*` variables.
+
+### What the role sets up
+
+- **Roles and databases:** one role and one database per entry of `postgres_server_services`, the database owned by the role (UTF-8, created from `template0`). Application roles are never superusers and cannot create databases or roles. `CONNECT` on each database is revoked from `PUBLIC`. No extension is installed.
+- **Passwords:** random, 64 alphanumeric characters, one per role, in `postgres/db-passwords.env` (git-ignored, mode 600) on the controller. The role reads them there. The tasks that handle them use `no_log` and have diff off.
+- **`pg_hba.conf`** (whole file templated): local `postgres` by peer, other local access rejected, remote only `hostssl <db> <role> <client>/32 scram-sha-256`, everything else rejected. `ssl = on`, `ssl_min_protocol_version = TLSv1.2`, `password_encryption = scram-sha-256`.
+- **Settings** are in the drop-in `/etc/postgresql/17/main/conf.d/10-kornoglab.conf`. The Debian main file is untouched.
+- **Clients per service:** `clients` in `host_vars/db.yml`. Changing an address is a one-line edit, then `--tags postgres`. A service with an empty list still gets its role and database, no `pg_hba` line, and the run prints a message naming it. A value that is not an IPv4 address stops the run before any change.
+
+### TLS certificate
+
+The server uses the wildcard `*.kornoglab.fr` certificate (it covers `db.kornoglab.fr`). The acme folder is bind-mounted read-only at `/certs` (as for `rproxy`). PostgreSQL refuses a key readable by others, so `pg-tls-sync` copies the files to `/etc/postgresql/tls/<timestamp>/` (key 0600 `postgres`) and swaps the symlink `current`.
+
+- It runs 2 minutes after boot and daily at 04:00 (`pg-tls-sync.timer`, `Persistent=true`). A path unit would not see a change made by another host on NFS.
+- Checks before anything changes: files present, readable and not empty, certificate parses, not expired, covers `db.kornoglab.fr`, key matches the certificate. Any failure exits non-zero, keeps the current copy, and PostgreSQL keeps running. The failure goes to Discord (below).
+- Identical files: no change and no reload. Otherwise the new copy is installed and PostgreSQL reloaded. If the reload command fails, the old link is put back. The last three copies are kept.
+- The first Ansible run executes the script once, so a missing certificate stops the run with a clear message.
+
+Clients connect to `db.kornoglab.fr` with `sslmode=verify-full`. This needs the UniFi A record (step 1 below). Connecting by IP address fails the name check, by design.
+
+### Backups
+
+The nightly vzdump job (02:00, all guests) covers the guest. In addition, `postgres-backup.timer` runs `pg-backup` daily at 03:30:
+
+- `globals.sql` (`pg_dumpall --globals-only`, holds the password hashes) and `<db>.dump` (`pg_dump --format=custom`) per database, in `/mnt/pgbackup/<YYYY-MM-DD>/`. Each dump is checked with `pg_restore --list`. The folder is written as `<date>.partial` and renamed when complete.
+- `/mnt/pgbackup` is a bind mount of `/mnt/dataYmir/postgres_backup` (`mp1`), so the dumps are outside the guest, and vzdump skips it.
+- **A missing mount can never fill the guest disk.** The script stops unless `/mnt/pgbackup` is a mount point and the file `.pgbackup-sentinel` exists in it. Otherwise it writes nothing and exits non-zero.
+- **Owner on Ymir:** the dump runs as root of the guest, which is uid `100000` on the host (`/etc/subuid`), and the share has no root squash. The folder is therefore `100000:100000`, mode 0700, so no other NFS client can read the password hashes. The files are 0600. This is the same uid that vzdump runs as. The first backup in the guest is the real proof that writing works.
+- **Retention (proposal, open point):** the newest 14 daily folders plus the folders dated the 1st of the newest 6 months. The total size stays small. Pruning runs only after a successful dump and only touches names of the form `YYYY-MM-DD`.
+- **How a failure is noticed (open point):** `postgres-backup.service` and `pg-tls-sync.service` have `OnFailure=` pointing to a unit that runs `pg-notify`, which posts "`db: <unit> failed at <time>`" to the Discord webhook (same pattern as `nut_client`, message without any secret). Alternatives: mail (no relay is configured), Proxmox notifications (they only cover vzdump jobs, not jobs inside a guest), a dead-man's switch such as Healthchecks (needs an external service). Cost of the chosen option: a copy of the webhook secret (`nut/discord.env`) in the guest at `/etc/postgresql/discord.env` (mode 0600, root). If the guest were compromised, the attacker could post to that channel. Not detected: the guest down or the timer not firing. A dead guest shows in the vzdump notifications. Set `postgres_server_notify_enabled: false` to go without.
+
+### Restore procedure (tested locally, see "Tested")
+
+On `db`, as root. `<date>` is a folder of `/mnt/pgbackup`. The dump files belong to root, so give them to `pg_restore` on standard input.
+
+```bash
+# host: db (root). One database, into a scratch name first
+D=/mnt/pgbackup/<date>
+runuser -u postgres -- createdb -T template0 -E UTF8 --locale=C.UTF-8 -O authelia authelia_restore
+runuser -u postgres -- pg_restore --exit-on-error -d authelia_restore < $D/authelia.dump
+runuser -u postgres -- psql -d authelia_restore -c '\dt'   # check, then drop it: dropdb authelia_restore
+```
+
+To replace the real database: stop its client, `runuser -u postgres -- dropdb authelia`, create it as above with the real name, restore, start the client, then run `ansible-playbook site.yml -K --limit db --tags postgres` once to put the `CONNECT` revoke back.
+
+To rebuild a whole server (after a new `db` guest and the role are applied, the roles already exist): `runuser -u postgres -- psql -f - postgres < $D/globals.sql` loads the roles and password hashes. Errors "role ... already exists" are expected for roles that exist. Then create and restore each database as above. If the guest itself is lost, restore it from the vzdump backup (spare VMID, see section 6) or rebuild it with the playbook and restore the dumps.
+
+### Commands to run (in this order)
+
+1. **UniFi:** add the Host (A) record `db.kornoglab.fr` → `192.168.0.26` (Settings > Routing & Firewall > DNS, as in the main README). Check: `dig +short db.kornoglab.fr`.
+2. **pachimari, passwords:** `./postgres/make-secrets.sh`, then `git secret add postgres/db-passwords.env && git secret hide`, then commit `postgres/db-passwords.env.secret`. The script prints only key names.
+3. **pachimari, retire the old files** (the old folder was never used): run `git secret remove -h` first to check the flags, then `git secret remove postgres/.env postgres/postgres.secrets.env`, `git rm postgres/.env.secret postgres/postgres.secrets.env.secret`, `rm postgres/.env postgres/postgres.secrets.env`, and delete the lines `postgres.secrets.env` and `.env` from `postgres/.gitignore`. The compose file and sample files are already gone from the working tree (commit that deletion).
+4. **orisa, as root, before creating the guest** (`mp1` needs the folder, and if `pct set` failed after `pct create` the role would skip the guest next time because it exists):
+   `install -d -o 100000 -g 100000 -m 0700 /mnt/dataYmir/postgres_backup` and
+   `install -o 100000 -g 100000 -m 0600 /dev/null /mnt/dataYmir/postgres_backup/.pgbackup-sentinel`
+5. **Dry run:** `cd ansible && ansible-galaxy collection install -r requirements.yml && ansible-playbook site.yml --check --diff -K --limit orisa`. The tasks for `db` show as skipped, because dry runs skip commands. Nothing may change for 121 to 123.
+6. **Create the guest and apply:** `ansible-playbook site.yml -K --limit orisa,db`. If you set a client address for Infisical first, it is included.
+7. **Verify:**
+   - in `db`: `systemctl list-timers` lists `pg-tls-sync` and `postgres-backup`. `runuser -u postgres -- psql -c 'show ssl'` says `on`.
+   - TLS login: `./postgres/copy-password.sh authelia` copies the password to the clipboard (pasted once, not shown), then `psql "host=db.kornoglab.fr dbname=authelia user=authelia sslmode=verify-full"` and paste. Only the addresses in `clients` are accepted, today `192.168.0.25` (the future `auth` guest), so from pachimari the connection is refused. To test a login from pachimari, temporarily add `192.168.0.33` to `clients` of `authelia`, run `--tags postgres`, test, then remove it again.
+   - from a non-listed address, the connection must be refused (`pg_hba.conf rejects connection`).
+8. **First backup and restore test:** in `db`, `systemctl start postgres-backup`. Check `/mnt/dataYmir/postgres_backup/<date>/` on orisa (owner 100000). Restore into a scratch database with the procedure above. Then test the alert: `rm /mnt/pgbackup/.pgbackup-sentinel; systemctl start postgres-backup` must fail and post to Discord. Put the sentinel back with `touch` afterwards.
+
+### How to add a database for a new service
+
+1. Add an entry in `ansible/host_vars/db.yml`: `- name: <service>` (lowercase letters, digits, underscore) and `clients: ["<ip of the host running it>"]`.
+2. `./postgres/make-secrets.sh <service>` (only adds the missing key), then `git secret hide` and commit the `.secret` file.
+3. `ansible-playbook site.yml -K --limit db --tags postgres`. The run adds the role, the database and the `pg_hba` line.
+4. `./postgres/copy-password.sh <service>` to paste the password into the service's configuration. Use `sslmode=verify-full` and host `db.kornoglab.fr`.
+
+### What the official documentation says
+
+- **Infisical** ([requirements](https://infisical.com/docs/self-hosting/configuration/requirements), [environment variables](https://infisical.com/docs/self-hosting/configuration/envars)): PostgreSQL only, "extensively tested" on 16, 14 or newer recommended. The database user needs all privileges on its database, including creating schemas, tables and indexes (the owning role has them). Connection through `DB_CONNECTION_URI` with `sslmode` in the query string. It also needs Redis, which is not part of this service.
+- **Authelia** ([PostgreSQL storage](https://www.authelia.com/configuration/storage/postgres/)): any PostgreSQL version still supported upstream. Options `address`, `database`, `schema` (default `public`), `username`, `password`, `tls`. It verifies the server certificate against the system trust store and migrates its own schema. It recommends a random alphanumeric password of 64 characters or more, which matches the generator.
+- **Not verified:** neither page names required extensions or an encoding, so none are installed (UTF-8 databases). Check each service's first start log. Whether Infisical's Node client verifies a Let's Encrypt chain with the container's trust store without `DB_ROOT_CERT` is unconfirmed (the documentation shows that variable only for cloud providers). Try `sslmode=verify-full` first. The Authelia version-support page that was fetched was truncated, so that criterion comes from the search snippet of its GitHub source.
+
+### Tested (2026-11-18, throwaway Debian 13 systemd containers, since removed)
+
+- Role run twice: second run `changed=0`. Cluster UTF-8, `ssl on`, `max_connections` 50, roles not superusers, databases owned by their role, `pg_hba_file_rules` without errors, role and database created for a service with no client.
+- Over TLS from a second container: `verify-full` login as the allowed address works. Refused: another address, no TLS, wrong password, a role on another service's database, an entry with no client, connecting by IP (name mismatch).
+- Certificate sync: unchanged files (no reload), renewal (installed, reload logged, key 0600), mismatched key, garbage, empty, missing, unreadable by another user, expired, wrong name (all non-zero with the current link unchanged and PostgreSQL up), failed reload (link put back, retry works), keeping three copies.
+- Backup: dumps, `pg_restore --list`, retention on fake folders (14 daily + 6 first-of-month, other names untouched), refusal without sentinel and without mount point, failure with PostgreSQL stopped (no final folder created).
+- Restore: drop and restore of a database (row count and owner identical), `globals.sql` loaded on a fresh cluster (only the expected "role already exists" errors).
+- Failure notification: `OnFailure` ran `pg-notify` after a failed backup. The URL goes to curl on stdin only, the message holds the host, unit and time. Without a webhook file it logs and exits 0. A hostile unit name is replaced by `unknown`.
+- Secrets: a `-vvv --diff` run does not contain any of the passwords. Missing file, missing key, bad IPv4 and bad name each stop the run with a clear message.
+- **Not tested:** the real LXC (unprivileged uid mapping, bind mounts, a write to Ymir as uid 100000), a systemd run under LXC rather than podman, the real Let's Encrypt chain, the exact package `17.12` (the container had the current trixie package), the Discord post to the real webhook, `pct create` with `mp1`, and a dry run that shows the guest as "to be created" (dry runs skip `command` tasks). The `createcluster.d` UTF-8 setting is harmless but not shown to be needed: a trixie container without any `LANG` already created a UTF-8 cluster.
+
+### Open points
+
+1. Infisical's client address (`clients: []` in `host_vars/db.yml`).
+2. How failed dumps are noticed: Discord from the guest is proposed. Not covered: the guest down or the timer not firing.
+3. Retention: 14 daily and 6 monthly are proposed. vzdump uses 7, 4 and 3.
+4. Disk: 8 GB proposed (16 GB was suggested). `shared_buffers` 256 MB proposed (512 MB was suggested).
+5. PostgreSQL 17 is the packaged major version. Infisical documents 16 as the tested one.
+6. The BIOS iGPU memory reservation (3 GB) could be lowered to free RAM. The effect on Jellyfin transcoding is not verified.
+7. Folder owner on Ymir is uid 100000: proven only by the first backup in the guest.
+
+---
+
 ## 8. Guests for the `parr` stack
 
 ### Layout: one guest per service or grouped?
@@ -386,7 +507,7 @@ Why B: the *arr apps, qBittorrent and Seerr talk to each other by container name
 | `rproxy` | Debian LXC, 1 core, 512 MB | Traefik only, with the wildcard cert | Single entry point, stable IP, rarely changes. Other guests can be rebuilt without touching TLS. |
 | `jellyfin` | Debian LXC | Jellyfin only, iGPU passthrough | The only service needing `/dev/dri`. Heavy CPU/RAM use during transcodes, so it gets its own limits. Users see it most, so keeping it independent of the *arr churn helps. |
 | `arr` | Debian LXC | Sonarr, Radarr, Lidarr, Bazarr, Prowlarr, qBittorrent + gluetun, Seerr, Homarr, Calibre-web | Tightly coupled apps, one compose file, one `/data` mount (hardlinks need a single filesystem). gluetun needs `/dev/net/tun`. |
-| `services` | Debian LXC or VM | Stack from `kornogHosted` (postgres, valkey, zigbee2mqtt, speedtest, it-tools, infisical, ...) | Different lifecycle from media. |
+| `services` | Debian LXC or VM | Stack from `kornogHosted` (valkey, zigbee2mqtt, speedtest, it-tools, infisical, ...; postgres moved to its own guest `db`, section 7c) | Different lifecycle from media. |
 | `core-keeper` (later) | VM or LXC | Game server | Cannot starve the media stack. |
 
 If you later want finer isolation, split out qBittorrent + gluetun first (VPN failures stay contained), then Seerr. Option C for everything is possible but not worth it unless you want per-app restore points badly.
@@ -593,6 +714,7 @@ Rollback: change the A records back to `192.168.0.20` and restart the stack on h
 - [ ] Notifications working (send a test)
 - [ ] Host config backed up
 - [ ] `nut_client` applied: `nut-monitor` running, UPS login accepted, test alert received in Discord, BIOS power-on after AC loss set
+- [ ] `db` guest applied (section 7c): record `db.kornoglab.fr`, TLS login from an allowed host, first dump on Ymir, restore tested, failure alert tested
 - [ ] `rproxy`, `jellyfin`, `arr` guests with fixed IPs; iGPU, tun and NFS working; Traefik file routes in place; Jellyfin hardware transcoding confirmed in the playback log
 - [ ] Migration cut over and heimdall retired
 

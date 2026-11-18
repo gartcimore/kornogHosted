@@ -1,0 +1,38 @@
+---
+# A new cluster is created with UTF-8 even when the guest has no LANG set.
+# /etc/postgresql-common/createcluster.conf includes this directory.
+- name: Make sure the createcluster.d directory exists
+  ansible.builtin.file:
+    path: /etc/postgresql-common/createcluster.d
+    state: directory
+    mode: "0755"
+- name: New clusters are initialised with UTF-8
+  ansible.builtin.copy:
+    dest: /etc/postgresql-common/createcluster.d/kornoglab.conf
+    content: |
+      # Managed by Ansible (roles/postgres_server)
+      initdb_options = '--encoding=UTF8 --locale=C.UTF-8'
+    mode: "0644"
+- name: Install PostgreSQL and tools
+  ansible.builtin.apt:
+    name:
+      - postgresql
+      - python3-psycopg2
+      - acl
+      - curl
+      - openssl
+      - ca-certificates
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+- name: TLS directory
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+  loop:
+    - "{{ postgres_server_tls_dir }}"
+  # The postgres user exists only after the package is installed.
+  when: not ansible_check_mode

@@ -5,3 +5,5 @@ volumes/
 arr/.env
 # Plaintext Discord webhook for the NUT alerts (roles/nut_client); commit nut/discord.env.secret only.
 nut/discord.env
+# Plaintext PostgreSQL role passwords (roles/postgres_server); commit postgres/db-passwords.env.secret only.
+postgres/db-passwords.env

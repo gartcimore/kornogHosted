@@ -1,0 +1,30 @@
+---
+# Guest definition, read by the lxc_guest role on orisa. It is applied only
+# when the guest is created. Changing it later does not modify a running guest.
+# Native PostgreSQL, no Docker (group native_guests). Sizing: docs/orisa-proxmox-setup.md, section 7c.
+lxc:
+  vmid: 126
+  ip: 192.168.0.26
+  cores: 2
+  memory: 2048
+  swap: 256
+  disk_gb: 8
+  # rproxy is 1, jellyfin 2, arr 3. Clients of the database (the future auth guest and
+  # Infisical's host) must use 2 or higher. Shutdown runs in reverse order, so the
+  # database stops after its clients.
+  startup_order: 1
+  pct_options:
+    # mp0: wildcard cert from the acme container, read-only (as rproxy).
+    mp0: /mnt/dataYmir/containers/volumes/acme/certs,mp=/certs,ro=1
+    # mp1: folder on Ymir for the logical backups. A bind mount, so vzdump skips it.
+    # It must exist before the guest is created (docs/orisa-proxmox-setup.md, section 7c).
+    mp1: /mnt/dataYmir/postgres_backup,mp=/mnt/pgbackup
+ansible_host: "{{ lxc.ip }}"
+# One role and one database per entry, named after the service.
+# clients: IPv4 addresses allowed over TLS. Empty means no network access yet.
+postgres_server_services:
+  - name: infisical
+    # OPEN POINT: the host that will run Infisical is not decided. Add its address.
+    clients: []
+  - name: authelia
+    clients: ["192.168.0.25"]

@@ -1,0 +1,26 @@
+---
+- name: Backup script
+  ansible.builtin.template:
+    src: pg-backup.j2
+    dest: "{{ postgres_server_sbin }}/pg-backup"
+    owner: root
+    group: root
+    mode: "0750"
+- name: Backup units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - postgres-backup.service
+    - postgres-backup.timer
+  notify: Daemon reload
+- name: Apply unit changes now
+  ansible.builtin.meta: flush_handlers
+- name: The backup timer is enabled
+  ansible.builtin.systemd_service:
+    name: postgres-backup.timer
+    enabled: true
+    state: started

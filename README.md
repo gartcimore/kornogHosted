@@ -20,7 +20,7 @@ This creates the `volumes/` tree (git-ignored) where each service stores its dat
 | [core-keeper](core-keeper/) | Core Keeper dedicated game server |
 | [it-tools](it-tools/) | Developer utility tools collection |
 | [librespeed](librespeed/) | LibreSpeed self-hosted speedtest |
-| [postgres](postgres/) | Shared PostgreSQL instance for other services |
+| [postgres](postgres/) | Password generator and samples for the shared PostgreSQL guest `db` (the service itself is the Ansible role `postgres_server`) |
 | [speedtest-tracker](speedtest-tracker/) | Speedtest Tracker with SQLite |
 | [zigbee2mqtt](zigbee2mqtt/) | Zigbee2MQTT bridge (SLZB-MR3 coordinator over TCP) |
 
@@ -152,12 +152,13 @@ through rproxy:
 |----------|----|-----------|
 | `ymir.kornoglab.fr` | `192.168.0.54` | Synology DSM itself. Set in DSM → Control Panel → Login Portal → DSM → "Customized domain", with the `*.kornoglab.fr` wildcard cert imported in DSM → Security → Certificate. Reachable at `https://ymir.kornoglab.fr:5001`. |
 | `drogo.kornoglab.fr` | `192.168.0.44` | the drogo NAS directly (same idea as ymir if it's a Synology). |
+| `db.kornoglab.fr` | `192.168.0.26` | the PostgreSQL server in the `db` guest, TCP 5432 (not HTTP, so Traefik is not involved). It presents the `*.kornoglab.fr` wildcard certificate itself, so clients use `sslmode=verify-full` with this name. Record to create (prepared, not applied): see `docs/orisa-proxmox-setup.md` 7c. |
 | `ha.kornoglab.fr` | (via nginx-proxy) | **configured but NOT in use** — Home Assistant lives at `192.168.0.30:8123` and is currently reached via the old LAN name `homeassistant.becquerel`. The `nginx-proxy/` container has an `ha.conf` route but it was never adopted. To make it real, prefer DSM's Login Portal → Reverse Proxy over the nginx-proxy container. |
 
 So there are two patterns for a LAN hostname:
 
 - **Proxied** (`<service>.kornoglab.fr` → `192.168.0.21`): a file route in `rproxy/traefik/dynamic/` to the guest running the service. Add a UniFi A record + the route.
-- **Device-direct** (`ymir`/`drogo`): point the UniFi A record at the device's own IP and let the device serve itself (DSM customized-domain + imported wildcard cert). No Traefik involved.
+- **Device-direct** (`ymir`/`drogo`, `db`): point the UniFi A record at the device's own IP and let the device serve itself (DSM customized-domain + imported wildcard cert, or for `db` PostgreSQL with a copy of the wildcard cert). No Traefik involved.
 
 > **Note on `dnsmasq/`:** that service resolves `*.kornoglab.fr` to the Synology
 > (`192.168.0.54`) via nginx-proxy. It was never deployed and is **superseded**

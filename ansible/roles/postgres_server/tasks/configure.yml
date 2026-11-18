@@ -1,0 +1,76 @@
+---
+- name: Certificate sync script
+  ansible.builtin.template:
+    src: pg-tls-sync.j2
+    dest: "{{ postgres_server_sbin }}/pg-tls-sync"
+    owner: root
+    group: root
+    mode: "0750"
+- name: Certificate sync units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - pg-tls-sync.service
+    - pg-tls-sync.timer
+  notify: Daemon reload
+- name: Failure notification script and unit
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: pg-notify.j2, dest: "{{ postgres_server_sbin }}/pg-notify", mode: "0750" }
+    - { src: "postgres-failure-notify@.service.j2", dest: "/etc/systemd/system/postgres-failure-notify@.service", mode: "0644" }
+  notify: Daemon reload
+- name: Discord webhook (secret, not shown in output)
+  ansible.builtin.copy:
+    src: "{{ postgres_server_discord_env_local }}"
+    dest: "{{ postgres_server_discord_env }}"
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false
+  no_log: true
+  when: postgres_server_notify_enabled
+- name: Apply unit changes now
+  ansible.builtin.meta: flush_handlers
+# A missing or invalid certificate stops the run here, before PostgreSQL is configured to use it.
+- name: Install the server certificate (first run, fails if the certificate is unusable)
+  ansible.builtin.command: "{{ postgres_server_sbin }}/pg-tls-sync"
+  register: postgres_server_tls_first
+  changed_when: "'installed' in postgres_server_tls_first.stdout"
+  when: not ansible_check_mode
+- name: Server settings
+  ansible.builtin.template:
+    src: 10-kornoglab.conf.j2
+    dest: "/etc/postgresql/{{ postgres_server_version }}/main/conf.d/10-kornoglab.conf"
+    owner: postgres
+    group: postgres
+    mode: "0644"
+  notify: Restart PostgreSQL
+- name: Client access rules
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/{{ postgres_server_version }}/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Reload PostgreSQL
+- name: Apply the server settings now
+  ansible.builtin.meta: flush_handlers
+- name: PostgreSQL is enabled and running
+  ansible.builtin.systemd_service:
+    name: "postgresql@{{ postgres_server_version }}-main"
+    enabled: true
+    state: started
+- name: The certificate sync timer is enabled
+  ansible.builtin.systemd_service:
+    name: pg-tls-sync.timer
+    enabled: true
+    state: started

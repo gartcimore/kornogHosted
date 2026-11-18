@@ -1,0 +1,83 @@
+---
+- name: Service names are plain lowercase identifiers
+  ansible.builtin.assert:
+    that: item.name is match('^[a-z][a-z0-9_]*$')
+    quiet: true
+    fail_msg: "Invalid service name {{ item.name | default('?') }}: use lowercase letters, digits and underscores."
+  loop: "{{ postgres_server_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+- name: Client addresses are IPv4 addresses
+  ansible.builtin.assert:
+    that: item.1 is string and item.1 is match('^((25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])$')
+    quiet: true
+    fail_msg: "Service {{ item.0.name }} has a client that is not an IPv4 address: {{ item.1 }}"
+  loop: "{{ postgres_server_services | subelements('clients', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }}"
+- name: Services without a client address get no network access
+  ansible.builtin.debug:
+    msg: >-
+      Service {{ item.name }} has no client address: its role and database are created,
+      but pg_hba.conf has no line for it. Set clients in host_vars/db.yml.
+  loop: "{{ postgres_server_services }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: not (item.clients | default([]))
+- name: Read the password file status
+  ansible.builtin.stat:
+    path: "{{ postgres_server_secrets_file }}"
+    get_checksum: false
+    get_mime: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: postgres_server_secrets_stat
+- name: Stop if the password file is missing
+  ansible.builtin.assert:
+    that: postgres_server_secrets_stat.stat.exists
+    quiet: true
+    fail_msg: >-
+      The password file is missing (looked for {{ postgres_server_secrets_file }}). Run
+      postgres/make-secrets.sh to create it (git secret reveal restores an encrypted copy).
+- name: Find services without a password in the file (names only)
+  ansible.builtin.set_fact:
+    postgres_server_missing: >-
+      {%- set out = [] -%}
+      {%- for s in postgres_server_services -%}
+      {%- if not lookup('ansible.builtin.ini', 'PG_PASSWORD_' ~ (s.name | upper) ~ ' type=properties file=' ~ postgres_server_secrets_file, default='') -%}
+      {%- set _ = out.append(s.name) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ out }}
+  no_log: true
+- name: Stop if a service has no password
+  ansible.builtin.assert:
+    that: postgres_server_missing | length == 0
+    quiet: true
+    fail_msg: >-
+      No password in {{ postgres_server_secrets_file }} for: {{ postgres_server_missing | join(', ') }}.
+      Run postgres/make-secrets.sh {{ postgres_server_missing | join(' ') }} (it only adds missing keys).
+- name: Read the Discord webhook file status
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Eq
+      - "^DISCORD_WEBHOOK_URL=[\"']?https://[^ ]+"
+      - "{{ postgres_server_discord_env_local }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  failed_when: false
+  no_log: true
+  register: postgres_server_env_url
+  when: postgres_server_notify_enabled
+- name: Stop if the webhook file is missing or has no URL
+  ansible.builtin.assert:
+    that: postgres_server_env_url.rc == 0
+    quiet: true
+    fail_msg: >-
+      {{ postgres_server_discord_env_local }} is missing or has no line DISCORD_WEBHOOK_URL=https://...
+      See nut/discord.env.sample, or set postgres_server_notify_enabled: false to go without alerts.
+  when: postgres_server_notify_enabled

@@ -6,13 +6,14 @@ Rebuilds the configuration described in [`docs/orisa-proxmox-setup.md`](../docs/
 
 | Path | Purpose |
 |---|---|
-| `inventory/hosts.yml` | Hosts: `orisa` (group `proxmox`) and the LXC guests (group `guests`) |
+| `inventory/hosts.yml` | Hosts: `orisa` (group `proxmox`) and the LXC guests (group `guests`). Guests that run native services and no Docker are also in `native_guests` (today: `db`) |
 | `group_vars/` | Shared settings: network, time zone, Proxmox host settings, NFS and backup definitions |
 | `host_vars/<guest>.yml` | One file per guest: VMID, IP, size, mounts (`lxc:`) and compose stacks. This is the single place an IP is written for a guest |
-| `site.yml` | Plays: host and guest creation on orisa, then software inside the guests |
+| `site.yml` | Plays: host and guest creation on orisa, then software inside the guests (Docker on `guests:!native_guests`, native services on `native_guests`) |
 | `roles/proxmox_host` | Packages, key-only SSH, NFS data mount, guest start ordering, vzdump tmpdir, backup storage and nightly job, web UI admin group/user/ACL |
 | `roles/nut_client` | NUT client (`upsmon`) for the UniFi UPS 2U: shuts orisa down with the NAS units, Discord alerts with the battery level. Tag `nut`. Needs `nut/discord.env` |
 | `roles/lxc_guest` | Downloads the template, creates and starts each guest |
+| `roles/postgres_server` | Native PostgreSQL 17 for the `db` guest: roles and databases per service, TLS with the wildcard certificate (kept fresh by a timer), `pg_hba` per client address, nightly dumps to Ymir with a failure alert. Tag `postgres`. Needs `postgres/db-passwords.env` and `nut/discord.env`. Prepared, not applied |
 | `roles/docker_host` | Time zone, Docker CE and compose plugin |
 | `roles/compose_stack` | Copies `rproxy/` (and other stacks) to `/opt/<name>` and runs `docker compose up -d` |
 
@@ -46,12 +47,15 @@ On an already-built host the dry run should show no changes on orisa. The first 
 
 The `nut_client` role needs the Discord webhook URL, which is a secret. It lives in `nut/discord.env` at the repo root (one line, `DISCORD_WEBHOOK_URL=...`, template in `nut/discord.env.sample`). The plain file is gitignored, like `arr/.env`: create it, then `git secret add nut/discord.env` and `git secret hide`, and commit the `.secret` file. `git secret reveal` restores it on a new checkout. The role stops with an error if the file is missing or has no URL, instead of installing a setup without alerts. The file is installed on orisa as `/etc/nut/discord.env` (0640, `root:nut`). Task output never shows it. Steps to apply and check: `docs/orisa-proxmox-setup.md`, section 7b.
 
+## PostgreSQL passwords (`postgres/db-passwords.env`)
+The `postgres_server` role reads one password per service from `postgres/db-passwords.env` on the controller (lines `PG_PASSWORD_<NAME>=...`). Create it with `postgres/make-secrets.sh [service ...]` (random, 64 alphanumeric characters, mode 600, never displayed, existing keys are kept). The plain file is gitignored: `git secret add postgres/db-passwords.env && git secret hide`, commit the `.secret` file. `postgres/copy-password.sh <service>` puts one password in the clipboard without showing it. The role stops with a message if the file or a service's key is missing. Guide: `docs/orisa-proxmox-setup.md`, section 7c.
 ## Adding a guest
 
 1. Pick an address and VMID (convention: VMID is `1` + last octet) and record it in `docs/ip-inventory.md`.
 2. Add the host under `guests:` in `inventory/hosts.yml`.
 3. Create `host_vars/<name>.yml` from `host_vars/rproxy.yml`.
 4. `ansible-playbook site.yml -K --limit orisa,<name>`
+5. A guest with native services and no Docker (like `db`): also add it under `native_guests:` in the inventory and give it its own play or role in `site.yml`. Docker and compose stacks run only on `guests:!native_guests`.
 
 ## Limits (read before relying on it)
 

@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# Included by the Debian postgresql.conf (conf.d). Sized for a 2 GB guest.
+listen_addresses = '*'
+max_connections = {{ postgres_server_max_connections }}
+shared_buffers = {{ postgres_server_shared_buffers }}
+effective_cache_size = {{ postgres_server_effective_cache_size }}
+work_mem = {{ postgres_server_work_mem }}
+maintenance_work_mem = {{ postgres_server_maintenance_work_mem }}
+password_encryption = 'scram-sha-256'
+ssl = on
+ssl_cert_file = '{{ postgres_server_tls_dir }}/current/fullchain.pem'
+ssl_key_file = '{{ postgres_server_tls_dir }}/current/key.pem'
+ssl_min_protocol_version = 'TLSv1.2'

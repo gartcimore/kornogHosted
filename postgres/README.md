@@ -1,36 +1,10 @@
-# Postgres
-
-Shared PostgreSQL instance for services that need a relational database.
-
-## Setup
-
-1. Copy `.env.sample` to `.env` and adjust paths
-2. Copy `postgres.secrets.env.sample` to `postgres.secrets.env` and set a strong password
-
-## Usage
-
-```bash
-docker compose up -d
-```
-
-## Adding a database for a new service
-
-The first database (`infisical`) is created automatically via the `POSTGRES_DB` env var on first start. For additional databases on an existing instance:
-
-```bash
-docker exec -it postgres-kornoglab psql -U postgres -c "CREATE DATABASE myservice;"
-```
-
-## Connecting from other services
-
-Other Docker Compose services can reach this instance at `postgres-kornoglab:5432` if they share a Docker network, or at `host.docker.internal:5432` / `<host-ip>:5432` via the exposed port.
-
-## Files
-
+# postgres
+Files for the shared PostgreSQL service. The service itself is **native PostgreSQL in the LXC guest `db`** (`192.168.0.26`, `db.kornoglab.fr`), set up by the Ansible role [`ansible/roles/postgres_server`](../ansible/roles/postgres_server). This folder only holds the password tooling. Guide, decisions, restore and "add a database": [`docs/orisa-proxmox-setup.md`](../docs/orisa-proxmox-setup.md), section 7c.
+The old Docker compose setup was never used and is gone.
 | File | Purpose |
-|------|---------|
-| `docker-compose.yml` | Service definition |
-| `.env` | Host paths and settings (gitignored) |
-| `.env.sample` | Template for `.env` |
-| `postgres.secrets.env` | Database password (gitignored) |
-| `postgres.secrets.env.sample` | Template for `postgres.secrets.env` |
+|---|---|
+| `make-secrets.sh [--file PATH] [service ...]` | Creates `db-passwords.env` (mode 600) with a random 64-character alphanumeric password per service (default `infisical authelia`). Never prints a password, never changes an existing key |
+| `copy-password.sh <service>` | Copies one password to the clipboard (`wl-copy`, paste once, hidden) |
+| `db-passwords.env.sample` | Key names only |
+| `db-passwords.env` | The real file. Git-ignored. Encrypt with `git secret add postgres/db-passwords.env && git secret hide` |
+Retiring the old encrypted files (`.env.secret`, `postgres.secrets.env.secret`) is a manual step, listed in section 7c of the guide.

@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Logical PostgreSQL backup to Ymir
+After=postgresql@{{ postgres_server_version }}-main.service
+Wants=postgresql@{{ postgres_server_version }}-main.service
+OnFailure=postgres-failure-notify@%n.service
+
+[Service]
+Type=oneshot
+ExecStart={{ postgres_server_sbin }}/pg-backup
