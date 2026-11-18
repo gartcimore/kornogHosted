@@ -1,5 +1,6 @@
 ---
 # Everything here goes through the local socket as the postgres OS user.
+# The guest has no sudo, so become uses su (the connection is root).
 # Passwords come from the controller file and never reach the output.
 - name: Application roles (never superusers)
   community.postgresql.postgresql_user:
@@ -9,6 +10,7 @@
     login_user: postgres
     login_unix_socket: /var/run/postgresql
   become: true
+  become_method: ansible.builtin.su
   become_user: postgres
   loop: "{{ postgres_server_services }}"
   loop_control:
@@ -26,6 +28,7 @@
     login_user: postgres
     login_unix_socket: /var/run/postgresql
   become: true
+  become_method: ansible.builtin.su
   become_user: postgres
   loop: "{{ postgres_server_services }}"
   loop_control:
@@ -41,6 +44,7 @@
     login_user: postgres
     login_unix_socket: /var/run/postgresql
   become: true
+  become_method: ansible.builtin.su
   become_user: postgres
   loop: "{{ postgres_server_services }}"
   loop_control:
