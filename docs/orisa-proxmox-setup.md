@@ -22,6 +22,7 @@ Fixed addresses (host and guests) are tracked in [ip-inventory.md](ip-inventory.
 
 Configuration as code: the host settings, guest definitions, Docker and the `rproxy` stack are described in [`../ansible/`](../ansible/README.md). A dry run (`--check`) against orisa and `rproxy` shows no changes on orisa. What is not managed (certificate, notifications, 2FA, network bridge/bond, BIOS, UniFi, DSM) is listed in that README and stays documented here.
 
+- [x] Step 4b: orisa moved to the rack, LACP bond of `nic0` and `nic1` (ports 7 and 8 aggregated), applied and verified 2026-11-18. Failover tested on `nic0` (about 0.6 s outage), throughput test still to do.
 - [x] Step 8 (`rproxy`): LXC 121 at `192.168.0.21` (Debian 13, unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB). Wildcard cert bind-mounted read-only at `/certs` from the host's `/mnt/dataYmir/containers/volumes/acme/certs`. Docker CE installed. Traefik (file provider only, config in `rproxy/`, deployed to `/opt/rproxy`) tested with `curl --resolve` against heimdall routes: valid cert, HTTP redirects to HTTPS. DNS still points at heimdall.
 
 - [x] Step 8 (`jellyfin`): LXC 122 at `192.168.0.22` (4 cores, 4 GB RAM, 16 GB disk, start order 2), created by the Ansible playbook. Media mounted read-only at `/mnt/dataYmir/media`, iGPU passed through (see "Pass through the iGPU"), hardware transcoding verified. Currently a fresh Jellyfin with a throwaway admin: heimdall's config (4.4 GB) is not migrated yet and DNS still points at heimdall.
@@ -36,7 +37,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 2. Watch `df -h` and `sensors` on orisa for a few days (transcoding plus the *arr stack). Retire heimdall's stack for good after about a week: remove its stopped containers, then the data it still holds in `/docker/appdata` (the rollback copy, about 6 GB with Jellyfin).
 3. Build the `services` guest (postgres, valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks.
 4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
-5. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), rack move with the LACP bond (4b), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
+5. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
 
 > Commands marked `# host` run in a shell on orisa (web UI Shell, console or SSH). Check your version first with `pveversion`. Proxmox VE 8 (Debian 12) and 9 (Debian 13) differ in apt source file format (see step 1).
 
@@ -153,33 +154,55 @@ Notes:
 - [ ] BIOS: enable SVM (AMD-V), IOMMU, and "Restore on AC power loss = Power On".
 - [ ] Optional Proxmox firewall: Datacenter > Firewall. Before enabling, add a rule allowing `192.168.0.0/24` to TCP 22 and 8006, or you will lock yourself out. Enable at Datacenter level last.
 
-### 4b. Rack move: LACP bond (do later, at the rack, with a screen and keyboard)
+### 4b. Rack move: LACP bond of both NICs (applied 2026-11-18)
 
-Hardware facts (checked on orisa):
+Status: **applied 2026-11-18** (`802.3ad`, hash `layer2+3`, ports 7 and 8 aggregated in UniFi). Before that only `nic1` (port 7) had link and `nic0` (the port 8 cable) had no carrier, because `nic0` was administratively down (see step 0). There is no local console anymore, so the host change used self-reverting safety nets; they were armed but never had to fire, so the revert path itself is untested. Checks before the change: healthy host, static address and bridge MAC intact, `bonding` module loaded, `ifupdown2` installed, driver `r8169` on both NICs.
 
 | Interface | MAC | Notes |
 |---|---|---|
-| `nic0` | `<nic0-mac>` | Realtek RTL8111/8168, 1 GbE, not cabled yet |
-| `nic1` | `<nic1-mac>` | Realtek RTL8111/8168, 1 GbE, in use, bridge port of `vmbr0`, UniFi fixed IP is tied to this MAC |
-| `nic3` | `<nic3-mac>` | ASIX AX88772 **USB 2.0** adapter (100 Mb/s). Not useful for the bond. |
+| `nic0` | `<nic0-mac>` | Realtek RTL8111/8168, 1 GbE, no carrier (second cable) |
+| `nic1` | `<nic1-mac>` | Realtek RTL8111/8168, 1 GbE, up on switch port 7, bridge port of `vmbr0` |
+| `nic3` | `<nic3-mac>` | ASIX AX88772 USB 2.0 adapter (100 Mb/s). Not plugged in, not for the bond |
 | `wlp4s0` | `<wifi-mac>` | Wi-Fi, unused |
 
-Current switch: UniFi USW Flex Mini (port 5), which cannot aggregate links. The bond only applies once orisa is on the rack switch.
+Notes on what UniFi shows:
+- The host and every guest sit behind switch port 7, so UniFi lists one MAC per port, and it may be a guest's (`arr` in the check). A guest's address is set in its container config and has no UniFi reservation, so "Fixed IP" unticked there is normal.
+- The host's reservation is tied to the host MAC (`vmbr0` takes `nic1`'s MAC). Look it up by that MAC in Client Devices.
 
-Two 1 GbE ports give 2 Gb/s in total across several flows, not for a single transfer. Redundancy is the main gain. If the rack switch does not support LACP, use `bond-mode active-backup` (no switch configuration, failover only).
+**0. The second link.** Do not judge the port 8 cable by `ethtool nic0` yet. `nic0` is administratively down (`iface nic0 inet manual` without `auto`, no UP flag in `ip link`), and the `r8169` driver does not negotiate a link on an interface that is down, so "no carrier" is expected until the bond brings it up. A port LED that lights at boot and then goes out fits this (a hypothesis, not tested). Do **not** bring `nic0` up by hand with `ip link set nic0 up`: a standalone NIC on the same LAN answers ARP requests for `192.168.0.12` with its own MAC (ARP flux) and makes the host flaky. After step 3 `nic0` should show link. Only if it still has none, check the cable, the other RJ45 socket and the UniFi profile of port 8.
 
-Procedure:
-1. On the rack switch (UniFi Port Manager): select the two ports, set **Aggregate** (LACP).
-2. On orisa, back up the config: `cp /etc/network/interfaces /root/interfaces.bak`.
-3. Edit `/etc/network/interfaces`, replacing `iface nic1 inet manual` and the `vmbr0` block with:
+**1. Choose the mode.**
 
+| Mode | Needs a UniFi change | Result |
+|---|---|---|
+| `802.3ad` (LACP) | yes, Aggregate on ports 7 and 8 | up to 2 Gb/s in total across several flows (a single transfer stays at 1 Gb/s), failover |
+| `active-backup` | no | one link carries traffic, the other takes over on failure. Works with one cable linked |
+
+Bandwidth expectation: LACP balances per flow, not per packet. All NFS traffic to Ymir comes from the host's single IP over one TCP connection per mount, and the guests only bind-mount it, so a single transfer stays at 1 Gb/s whatever the hash policy. A total above 1 Gb/s needs several flows: for example `nfs ... nconnect=4` in the mount options with `bond-xmit-hash-policy layer3+4`, plus the switch's and Ymir's own hashing for the return direction (not verified). Measure before and after (`iperf3` between orisa and a second host).
+
+**2. Order: host first, then the switch.** A UniFi aggregate on ports 7 and 8 while the host is not bonded probably suspends the link (LACP without a partner), which would cut orisa off with no console. Bonding the host first is safe with one cable: Linux forms a one-port aggregate even without a partner. (Neither behaviour was tested on this switch.)
+
+**3. Host bond with safety nets** (as root on orisa, one block at a time; this is what was run):
+```bash
+cp -a /etc/network/interfaces /root/interfaces.pre-bond
+# write /root/interfaces.new with the stanzas below (a heredoc, no manual editing), then check the diff
+# safety nets, armed BEFORE anything changes: restore the old file after 8 min, and after 12 min
+# reboot with it if the gateway still does not answer. Both survive losing the SSH session.
+systemd-run --unit=net-revert --on-active=8m \
+  /bin/sh -c 'cp -a /root/interfaces.pre-bond /etc/network/interfaces && /usr/sbin/ifreload -a'
+systemd-run --unit=net-revert-reboot --on-active=12m \
+  /bin/sh -c 'ping -c3 -W2 192.168.0.1 >/dev/null 2>&1 || { cp -a /root/interfaces.pre-bond /etc/network/interfaces; systemctl reboot; }'
+cp /root/interfaces.new /etc/network/interfaces
+systemd-run --unit=net-apply /usr/sbin/ifreload -a     # detached, a dropped SSH session cannot leave it half done
+```
+The `802.3ad` stanzas (keep one `iface nic0 inet manual`, delete the duplicate further down):
 ```
 iface nic0 inet manual
 iface nic1 inet manual
 
 auto bond0
 iface bond0 inet manual
-        bond-slaves nic0 nic1
+        bond-slaves nic1 nic0
         bond-miimon 100
         bond-mode 802.3ad
         bond-xmit-hash-policy layer2+3
@@ -192,16 +215,33 @@ iface vmbr0 inet static
         bridge-ports bond0
         bridge-stp off
         bridge-fd 0
-        bridge-vlan-aware yes
-        bridge-vids 2-4094
 ```
+For `active-backup` use `bond-mode active-backup` and `bond-primary nic1` instead of the `802.3ad` and hash lines. `hwaddress` keeps the bridge on the MAC covered by the UniFi reservation (the bond would otherwise give it the first slave's MAC). No VLAN lines are needed. The SSH session may stall for a few seconds, reconnect.
 
-   `hwaddress` keeps the bridge on the MAC covered by the UniFi fixed-IP reservation. The two `bridge-vlan-aware` lines are optional and only matter if you add VLANs later.
-4. Apply with `ifreload -a` from the console, not over SSH.
-5. Verify: `cat /proc/net/bonding/bond0` shows `802.3ad`, both slaves `up`, and the same Aggregator ID. Ping the gateway. In UniFi, the two ports show as aggregating.
-6. Pull one cable and check connectivity holds.
+**4. Check, then cancel the safety net:**
+```bash
+cat /proc/net/bonding/bond0       # mode as chosen, nic1 MII up; with 802.3ad the partner MAC stays 00:... until the switch is configured
+ip -br link | grep -E 'bond0|vmbr0'    # vmbr0 must still have the nic1 MAC
+ping -c3 192.168.0.1; pct list; pct exec 123 -- ping -c2 192.168.0.1
+findmnt /mnt/dataYmir /mnt/dataDrogo /mnt/dataDrogoRW /mnt/pve/ymir-backup
+systemctl stop net-revert.timer net-revert-reboot.timer   # only when everything above is fine, within 8 minutes
+```
+If the session does not come back, do nothing: after 8 minutes the old file is restored, and after 12 minutes the host reboots into it if the gateway still does not answer. Only physical access helps if that fails too.
 
-Rollback: `cp /root/interfaces.bak /etc/network/interfaces && ifreload -a`.
+**5. Switch side, `802.3ad` only**, after both slaves show `MII Status: up` in the bond file: UniFi Port Manager, select ports 7 and 8, Aggregate. Expect a few seconds of interruption. Then `/proc/net/bonding/bond0` must show the same Aggregator ID on both slaves and a non-zero partner MAC. The 5-minute host revert does not undo the switch change: undo the aggregate in UniFi by hand if the host disappears.
+
+**6. Afterwards:** pull one cable and check connectivity holds, then put it back. Record the result here and in `ansible/README.md` (the network is not managed by Ansible). Open: BIOS "power on after AC loss" (cannot be checked remotely; without it a rack power cut leaves the host off), and an out-of-band option (smart plug, PiKVM) is worth considering.
+
+**Result (2026-11-18).**
+- Host bond applied: about 3 s of interruption (14:15:42 to 14:15:45), the bridge returned to forwarding by itself. Guests, mounts and containers were unaffected.
+- `nic0` got its link as soon as the bond enslaved it, which confirms the step 0 explanation (the cable was fine).
+- Before the switch was aggregated each NIC was its own aggregator (IDs 1 and 2, partner MAC all zeros) and one carried traffic. After UniFi aggregated ports 7 and 8: both slaves in Aggregator ID 1, `Number of ports: 2`, partner MAC is the switch's.
+- `vmbr0` kept MAC `<nic1-mac>` (the `hwaddress` pin), so the UniFi reservation still applies. The `bridge-fd 0` "out of range" warning from `ifupdown2` is in the original config too and is harmless.
+- Kept as manual rollback copies: `/root/interfaces.pre-bond` and `/root/interfaces.new`.
+- Failover test, `nic0` only: `nic0` taken down in software for 20 s with a ping every 0.2 s from the desktop. The bond went to 1 port and returned to 2 by itself; 3 packets were lost (about 0.6 s) when the flow moved to the other link, none when `nic0` rejoined. The same test for `nic1` was not done, and no cable was physically pulled.
+- Open: a throughput check with `iperf3` (see the bandwidth note above), and the BIOS "power on after AC loss" setting.
+
+Details and evidence: `.agents/tasks/orisa-rack-network-report.md` (local, not committed).
 
 ---
 
