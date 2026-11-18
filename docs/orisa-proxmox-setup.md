@@ -22,7 +22,7 @@ Fixed addresses (host and guests) are tracked in [ip-inventory.md](ip-inventory.
 
 Configuration as code: the host settings, guest definitions, Docker and the `rproxy` stack are described in [`../ansible/`](../ansible/README.md). A dry run (`--check`) against orisa and `rproxy` shows no changes on orisa. What is not managed (certificate, notifications, 2FA, network bridge/bond, BIOS, UniFi, DSM) is listed in that README and stays documented here.
 
-- [x] Step 4b: orisa moved to the rack, LACP bond of `nic0` and `nic1` (ports 7 and 8 aggregated), applied and verified 2026-11-18. Failover tested on `nic0` (about 0.6 s outage), throughput test still to do.
+- [x] Step 4b: orisa moved to the rack, LACP bond of `nic0` and `nic1` (ports 7 and 8 aggregated), applied and verified 2026-11-18. Failover tested on `nic0` (about 0.6 s outage). Throughput tried: no gain between orisa and Ymir, as expected.
 - [x] Step 8 (`rproxy`): LXC 121 at `192.168.0.21` (Debian 13, unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB). Wildcard cert bind-mounted read-only at `/certs` from the host's `/mnt/dataYmir/containers/volumes/acme/certs`. Docker CE installed. Traefik (file provider only, config in `rproxy/`, deployed to `/opt/rproxy`) tested with `curl --resolve` against heimdall routes: valid cert, HTTP redirects to HTTPS. DNS still points at heimdall.
 
 - [x] Step 8 (`jellyfin`): LXC 122 at `192.168.0.22` (4 cores, 4 GB RAM, 16 GB disk, start order 2), created by the Ansible playbook. Media mounted read-only at `/mnt/dataYmir/media`, iGPU passed through (see "Pass through the iGPU"), hardware transcoding verified. Currently a fresh Jellyfin with a throwaway admin: heimdall's config (4.4 GB) is not migrated yet and DNS still points at heimdall.
@@ -180,7 +180,7 @@ Notes on what UniFi shows:
 | `802.3ad` (LACP) | yes, Aggregate on ports 7 and 8 | up to 2 Gb/s in total across several flows (a single transfer stays at 1 Gb/s), failover |
 | `active-backup` | no | one link carries traffic, the other takes over on failure. Works with one cable linked |
 
-Bandwidth expectation: LACP balances per flow, not per packet. All NFS traffic to Ymir comes from the host's single IP over one TCP connection per mount, and the guests only bind-mount it, so a single transfer stays at 1 Gb/s whatever the hash policy. A total above 1 Gb/s needs several flows: for example `nfs ... nconnect=4` in the mount options with `bond-xmit-hash-policy layer3+4`, plus the switch's and Ymir's own hashing for the return direction (not verified). Measure before and after (`iperf3` between orisa and a second host).
+Bandwidth expectation: LACP balances per flow, not per packet. All NFS traffic to Ymir comes from the host's single IP over one TCP connection per mount, and the guests only bind-mount it, so a single transfer stays at 1 Gb/s whatever the hash policy. A total above 1 Gb/s needs several flows (tried 2026-11-18, no gain between orisa and Ymir, see the Result below): for example `nfs ... nconnect=4` in the mount options with `bond-xmit-hash-policy layer3+4`, plus the switch's and Ymir's own hashing for the return direction (not verified). Measure before and after (`iperf3` between orisa and a second host).
 
 **2. Order: host first, then the switch.** A UniFi aggregate on ports 7 and 8 while the host is not bonded probably suspends the link (LACP without a partner), which would cut orisa off with no console. Bonding the host first is safe with one cable: Linux forms a one-port aggregate even without a partner. (Neither behaviour was tested on this switch.)
 
@@ -241,7 +241,8 @@ If the session does not come back, do nothing: after 8 minutes the old file is r
 - `vmbr0` kept MAC `<nic1-mac>` (the `hwaddress` pin), so the UniFi reservation still applies. The `bridge-fd 0` "out of range" warning from `ifupdown2` is in the original config too and is harmless.
 - Kept as manual rollback copies: `/root/interfaces.pre-bond` and `/root/interfaces.new`.
 - Failover test, `nic0` only: `nic0` taken down in software for 20 s with a ping every 0.2 s from the desktop. The bond went to 1 port and returned to 2 by itself; 3 packets were lost (about 0.6 s) when the flow moved to the other link, none when `nic0` rejoined. The same test for `nic1` was not done, and no cable was physically pulled.
-- Open: a throughput check with `iperf3` (see the bandwidth note above), and the BIOS "power on after AC loss" setting.
+- Throughput, tried 2026-11-18 with `iperf3` (TCP, `layer2+3`): no improvement between orisa and Ymir, as expected from how LACP works. It spreads different flows over the links, never one flow, and traffic between the same two hosts keeps to the same link (about 934 Mb/s per stream, still about 940 Mb/s with parallel streams or three senders at once). The bond gives redundancy (failover tested), not more bandwidth for this pair. `layer3+4` and real file transfers were not tried. `iperf3` stays installed on orisa, its service is disabled.
+- Open: the BIOS "power on after AC loss" setting.
 
 Details and evidence: `.agents/tasks/orisa-rack-network-report.md` (local, not committed).
 
