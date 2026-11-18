@@ -1,4 +1,2 @@
 # Plaintext passwords of the PostgreSQL service (roles/postgres_server); commit db-passwords.env.secret only.
 db-passwords.env
-postgres.secrets.env
-.env
