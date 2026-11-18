@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# orisa watches the UniFi UPS 2U as a secondary client. It shuts down when the UPS
+# reports low battery (LB) or a forced shutdown (FSD), at the same moment as the NAS units.
+RUN_AS_USER nut
+
+MONITOR {{ nut_client_ups_name }}@{{ nut_client_server }}:{{ nut_client_port }} 1 {{ nut_client_user }} {{ nut_client_password }} secondary
+MINSUPPLIES {{ nut_client_minsupplies }}
+
+SHUTDOWNCMD "{{ nut_client_shutdowncmd }}"
+
+POLLFREQ {{ nut_client_pollfreq }}
+POLLFREQALERT {{ nut_client_pollfreqalert }}
+DEADTIME {{ nut_client_deadtime }}
+FINALDELAY {{ nut_client_finaldelay }}
+HOSTSYNC {{ nut_client_hostsync }}
+
+NOTIFYCMD {{ nut_client_notify_script }}
+NOTIFYFLAG ONBATT SYSLOG+EXEC
+NOTIFYFLAG ONLINE SYSLOG+EXEC
+NOTIFYFLAG LOWBATT SYSLOG+EXEC
+NOTIFYFLAG FSD SYSLOG+EXEC
+NOTIFYFLAG COMMBAD SYSLOG+EXEC
+NOTIFYFLAG COMMOK SYSLOG+EXEC
+NOTIFYFLAG SHUTDOWN SYSLOG+EXEC

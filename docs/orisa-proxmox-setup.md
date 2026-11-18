@@ -29,6 +29,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 - [x] Backup job `backup-c3366771-401a` (02:00, all guests, `ymir-backup`) exists; restore of `rproxy` tested.
 
 - [x] Step 8 (`arr`): LXC 123 at `192.168.0.23` (4 cores, 6 GB RAM, 24 GB disk, start order 3), created by the Ansible playbook with UID/GID 1000 mapped to host 1000, `/dev/net/tun`, and read-write mounts of Ymir (`/mnt/dataYmir`, NFS) and drogo (`/mnt/dataDrogoRW` on the host, `/mnt/data` in the guest). Runs the `parr` stack (pinned commit, plus `arr/docker-compose.override.yml`, which turns Traefik and socket-proxy off) under `arr.service`. gluetun connects with kernel WireGuard (module loaded at boot by the playbook). Data copied from heimdall's `/docker/appdata` on 2026-11-17 and verified (file counts and sizes identical). Routes in `rproxy/traefik/dynamic/routes-arr.yml`, UniFi records moved to `192.168.0.21`. Details and lessons: [arr-guest-plan.md](arr-guest-plan.md).
+- [ ] UPS and safe shutdown: Ansible role `nut_client` written and dry-run checked, **prepared, not applied** (orisa does not read the UPS yet). See [section 7b](#7b-ups-and-safe-shutdown).
 - Drogo is mounted twice on the host: `/mnt/dataDrogo` (read-only, owner 101000, for jellyfin) and `/mnt/dataDrogoRW` (read-write, owner 1000, for arr). Each guest's own `mpN` line decides which one it sees.
 
 ### Where we stopped / next
@@ -37,7 +38,8 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 2. Watch `df -h` and `sensors` on orisa for a few days (transcoding plus the *arr stack). Retire heimdall's stack for good after about a week: remove its stopped containers, then the data it still holds in `/docker/appdata` (the rollback copy, about 6 GB with Jellyfin).
 3. Build the `services` guest (postgres, valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks.
 4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
-5. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
+5. Apply the `nut_client` role (webhook file, dry run, `--tags nut`, checks: section 7b), then set the BIOS "power on after AC loss".
+6. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
 
 > Commands marked `# host` run in a shell on orisa (web UI Shell, console or SSH). Check your version first with `pveversion`. Proxmox VE 8 (Debian 12) and 9 (Debian 13) differ in apt source file format (see step 1).
 
@@ -278,7 +280,88 @@ Disk layout on a single 512 GB drive: `local` (ISOs, templates, backups) and `lo
 - [ ] SMART: `smartctl -a /dev/nvme0` for a baseline. Proxmox runs `smartd`; set the email in `/etc/smartd.conf` or rely on notifications.
 - [ ] `sensors-detect` then `sensors` to check temperatures. Mini PCs run warm under sustained transcoding.
 - [ ] Optional: expose metrics (Datacenter > Metric Server) to InfluxDB/Prometheus, and add a Proxmox integration in Homarr.
-- [ ] UPS: a mini PC does not draw much, but a power cut during a write is the main corruption risk. A small UPS is worth it.
+- [x] UPS: the UniFi UPS 2U powers orisa and both NAS units. Monitoring and safe shutdown on orisa: section 7b (prepared, not applied).
+
+---
+
+## 7b. UPS and safe shutdown
+
+Status: **applied 2026-11-18.** The Ansible role `nut_client` ([`../ansible/roles/nut_client`](../ansible/roles/nut_client)) is installed on orisa. `nut-monitor` runs, `upsmon` holds a TLS connection to the UPS and no login refusal is logged (the `monuser` / `secret` login is accepted), and the test alert reached Discord. Not tested: a real power cut.
+
+### What was decided and why
+
+- orisa, ymir and drogo hang on the UniFi UPS 2U (`192.168.0.138`, NUT server, UPS name `ups`). orisa is behind a power strip, not plugged into the UPS directly, and it is not in the UPS "Safe Shutdown Pairing". The UPS "Power Cycle on Restore" does not apply to it.
+- **orisa shuts down at the same moment as the NAS units.** UniFi starts the safe shutdown when the remaining battery runtime reaches 5 minutes, and ymir and drogo follow that as Synology network-UPS clients ("Same as server"). orisa uses NUT's own low-battery handling: `upsmon` shuts the host down when the UPS reports `LB` (low battery), or `FSD` if it ever occurs. There is no timer, no percentage rule and no `upssched`.
+- orisa is a **secondary** client (`MODE=netclient`, `MINSUPPLIES 1`). It only shuts itself down. It never tells the UPS to cut power.
+- `SHUTDOWNCMD` is `/sbin/shutdown -h +0`, so it goes through systemd. Proxmox then stops the guests in reverse start order (123 `arr`, 122 `jellyfin`, 121 `rproxy`) before the mounts go away. The guests stop first, so nothing writes to the NFS mount when ymir disappears. This relies on the existing `10-nfs.conf` drop-in (guests start after the NFS mount, so they stop before it).
+- Timing: the last clean shutdown of orisa took about 107 s (2026-11-18, guests 43 s of that). UniFi's trigger leaves 5 minutes of estimated runtime, so there is roughly 3 times the time needed. The runtime figure is not reliable, though: the UPS reports a load of 0 W although the three machines hang on it.
+- **Alerts to Discord** come from `upsmon` (`NOTIFYCMD`) for ONBATT, ONLINE, LOWBATT, FSD, COMMBAD, COMMOK and SHUTDOWN. Each message names the event and gives the battery percentage and the runtime in minutes, read with `upsc` at that moment (shown as `unknown` if the UPS cannot be read). The same line goes to syslog (`logger -t nut-notify`). The script uses short timeouts (3 s for `upsc`, 5 s for `curl`) and ignores failures, so it cannot hold up a shutdown. It builds the JSON with `python3`, accepts only known event names, and disables Discord mentions.
+- The webhook URL is a secret. It is kept in `nut/discord.env` (git-secret, same convention as `arr/.env`) and installed as `/etc/nut/discord.env`, mode 0640, owner `root:nut` (`upsmon` runs the notify script as the `nut` user). The role stops with a clear message if `nut/discord.env` is missing or has no URL.
+
+### Reading the battery by hand
+
+```bash
+# host or any machine on the LAN with nut-client; reads only, no login needed
+upsc ups@192.168.0.138 | grep -E '^(ups.status|battery.charge|battery.runtime):'
+```
+
+Reference values on 2026-11-18: `OL` (on line), 100 %, runtime 4340 s.
+
+### Apply and verify
+
+Run from the controller (pachimari). Steps 1 and 2 happen in the repo root, the rest in `ansible/`.
+
+```bash
+# 1. webhook file (plain text stays out of git, only the encrypted copy is committed)
+cd /var/home/gart/depots/kornogHosted
+cp nut/discord.env.sample nut/discord.env
+$EDITOR nut/discord.env            # DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+git secret add nut/discord.env && git secret hide
+
+# 2. dry run: shows the package, /etc/nut files, the script and the webhook file (its content is hidden)
+cd ansible
+ansible-playbook site.yml --check --diff --limit orisa --tags nut -K
+
+# 3. apply
+ansible-playbook site.yml --limit orisa --tags nut -K
+```
+
+A dry run on a host without the package skips the service task and the restart handler, since the unit does not exist yet. Files show owner `root` instead of `nut` for the same reason.
+
+Then on orisa:
+
+```bash
+systemctl status nut-monitor                  # active (running), enabled
+journalctl -u nut-monitor -b --no-pager       # look for the login result
+upsc ups@192.168.0.138 | grep -E '^(ups.status|battery.charge|battery.runtime):'
+upsmon -h                                     # usage only, changes nothing
+ls -l /etc/nut /usr/local/sbin/nut-notify     # discord.env and upsmon.conf: root:nut 0640; script 0750
+# harmless alert test: sends one real Discord message marked TEST, no UPS event, no shutdown
+runuser -u nut -- env NOTIFYTYPE=ONLINE /usr/local/sbin/nut-notify "TEST from orisa, ignore"
+journalctl -t nut-notify -n 5 --no-pager      # the same line, from syslog
+```
+
+Expect the Discord message `orisa: UPS ONLINE - TEST from orisa, ignore | battery 100 %, runtime 72 min` (values will differ). If the Discord message is missing, `journalctl -t nut-notify` says whether the webhook file was unreadable or `curl` failed.
+
+### If the UPS login is refused
+
+The server has "Login Credential" off, so it should not check anything. That is not verified for `upsmon` logins. The role uses the Synology client defaults `monuser` / `secret` (not real secrets). The first start decides: `journalctl -u nut-monitor` either shows the UPS as being monitored and `on line`, or an access-denied or login-failed line, and then `upsmon` retries without shutting anything down. To change the pair, set `nut_client_user` and `nut_client_password` (for example in `ansible/group_vars/proxmox.yml`) and apply again. The role restarts `nut-monitor` when `upsmon.conf` changes. The login that ymir and drogo use is shown in DSM (Control Panel > Hardware & Power > UPS), which can be used to copy their values.
+
+### Limits and open items
+
+- **BIOS "power on after AC loss" is not set.** After a UPS-triggered shutdown, orisa restarts by itself only if that BIOS option is enabled and the power was really cut. If the mains returns before the UPS cuts its outlets, orisa stays off. Otherwise: power button or Wake-on-LAN. Wake-on-LAN is not built. Setting the BIOS option is still pending (also listed in step 4).
+- NUT login with `monuser` / `secret` is **unverified** (see above).
+- The UPS is reported to accept at most **3 NUT clients**. ymir and drogo use 2. orisa makes 3. Home Assistant or PeaNUT (Homarr) would be a fourth. Unverified, the UPS refuses `LIST CLIENT`. If `nut-monitor` reports a refused connection, count the clients first.
+- The UPS runtime estimate is not trustworthy (load reported as 0). The 5-minute trigger is UniFi's, not orisa's.
+- A real power cut test has not been done, and should not be done just to test (see below).
+- The notify script was tested on the desktop with stub `curl` and `upsc` only. It has not run on orisa or sent a message to the real Discord webhook.
+
+### What must never be run as a "test"
+
+- `upsmon -c fsd` (forces shutdown for every client, including this host)
+- `upsdrvctl shutdown`, `upscmd` with any `shutdown.*` command
+- `shutdown` or `systemctl poweroff` to see `SHUTDOWNCMD` work
+- unplugging the UPS input, or simulating low battery on a NAS: this takes ymir and drogo down too
 
 ---
 
@@ -507,6 +590,7 @@ Rollback: change the A records back to `192.168.0.20` and restart the stack on h
 - [ ] NFS backup storage, nightly job, one restore tested
 - [ ] Notifications working (send a test)
 - [ ] Host config backed up
+- [ ] `nut_client` applied: `nut-monitor` running, UPS login accepted, test alert received in Discord, BIOS power-on after AC loss set
 - [ ] `rproxy`, `jellyfin`, `arr` guests with fixed IPs; iGPU, tun and NFS working; Traefik file routes in place; Jellyfin hardware transcoding confirmed in the playback log
 - [ ] Migration cut over and heimdall retired
 

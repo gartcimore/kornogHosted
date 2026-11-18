@@ -1,0 +1,102 @@
+---
+# --- The webhook must exist before anything is installed -----------------------
+# Alerts are half the point of this role: stop instead of installing a setup without them.
+- name: Read the local Discord webhook file status
+  ansible.builtin.stat:
+    path: "{{ nut_client_discord_env_local }}"
+    get_checksum: false
+    get_mime: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: nut_client_env_stat
+- name: Stop if the Discord webhook file is missing
+  ansible.builtin.assert:
+    that: nut_client_env_stat.stat.exists
+    quiet: true
+    fail_msg: >-
+      nut/discord.env is missing (looked for {{ nut_client_discord_env_local }}). Copy
+      nut/discord.env.sample to nut/discord.env, put the webhook URL in it, then run again.
+      git-secret keeps the encrypted copy: `git secret reveal` restores it.
+- name: Check that the webhook file holds a URL (value not shown)
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Eq
+      - "^DISCORD_WEBHOOK_URL=[\"']?https://[^ ]+"
+      - "{{ nut_client_discord_env_local }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  failed_when: false
+  no_log: true
+  register: nut_client_env_url
+- name: Stop if the webhook file has no URL
+  ansible.builtin.assert:
+    that: nut_client_env_url.rc == 0
+    quiet: true
+    fail_msg: >-
+      {{ nut_client_discord_env_local }} has no line DISCORD_WEBHOOK_URL=https://... (empty value?).
+# --- Package ---------------------------------------------------------------------
+- name: Install the NUT client
+  ansible.builtin.apt:
+    name: nut-client
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  register: nut_client_apt
+# The package creates the nut group. A dry run on a host without the package has no
+# such group yet, so files fall back to root there (the real run uses nut).
+- name: Look up the nut group
+  ansible.builtin.getent:
+    database: group
+    key: nut
+    fail_key: false
+  check_mode: false
+  register: nut_client_getent
+- name: Pick the group for the config files
+  ansible.builtin.set_fact:
+    nut_client_group: "{{ 'nut' if nut_client_getent.ansible_facts.getent_group.nut is not none else 'root' }}"
+# --- Configuration ---------------------------------------------------------------
+# upsmon drops to the nut user, so it reads these files and runs the notify script as nut.
+- name: NUT mode is netclient
+  ansible.builtin.template:
+    src: nut.conf.j2
+    dest: /etc/nut/nut.conf
+    owner: root
+    group: "{{ nut_client_group }}"
+    mode: "0640"
+  notify: Restart nut-monitor
+- name: The upsmon configuration (holds the NUT login, not world-readable)
+  ansible.builtin.template:
+    src: upsmon.conf.j2
+    dest: /etc/nut/upsmon.conf
+    owner: root
+    group: "{{ nut_client_group }}"
+    mode: "0640"
+  notify: Restart nut-monitor
+- name: Discord alert script
+  ansible.builtin.template:
+    src: nut-notify.j2
+    dest: "{{ nut_client_notify_script }}"
+    owner: root
+    group: "{{ nut_client_group }}"
+    mode: "0750"
+- name: Discord webhook (secret, not shown in output)
+  ansible.builtin.copy:
+    src: "{{ nut_client_discord_env_local }}"
+    dest: "{{ nut_client_discord_env }}"
+    owner: root
+    group: "{{ nut_client_group }}"
+    mode: "0640"
+  diff: false
+  no_log: true
+# --- Service ---------------------------------------------------------------------
+- name: The nut-monitor service is enabled and running
+  ansible.builtin.systemd_service:
+    name: nut-monitor
+    enabled: true
+    state: started
+  # A dry run on a host without the package has no unit to look at yet.
+  when: not (ansible_check_mode and nut_client_apt is changed)

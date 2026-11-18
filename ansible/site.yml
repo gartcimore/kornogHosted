@@ -5,6 +5,8 @@
   roles:
     - role: proxmox_host
       tags: [host]
+    - role: nut_client
+      tags: [nut]
     - role: lxc_guest
       tags: [lxc]
 

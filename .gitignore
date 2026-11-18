@@ -3,3 +3,5 @@ volumes/
 !*.secret
 # Plaintext secrets; the encrypted arr/.env.secret is what gets committed (git-secret).
 arr/.env
+# Plaintext Discord webhook for the NUT alerts (roles/nut_client); commit nut/discord.env.secret only.
+nut/discord.env

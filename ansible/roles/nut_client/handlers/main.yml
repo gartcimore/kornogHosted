@@ -1,0 +1,7 @@
+---
+- name: Restart nut-monitor
+  ansible.builtin.systemd_service:
+    name: nut-monitor
+    state: restarted
+  # A dry run on a host without the package has no unit to restart yet.
+  when: not (ansible_check_mode and nut_client_apt is changed)

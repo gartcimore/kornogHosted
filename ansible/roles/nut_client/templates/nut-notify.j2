@@ -1,0 +1,64 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# upsmon NOTIFYCMD: sends "<event> + battery charge and runtime" to Discord and syslog.
+# Called by upsmon as: NOTIFYTYPE=<event> nut-notify "<message>". Runs as the nut user.
+# Must stay fast and must never block a shutdown: short timeouts, every failure ignored.
+# The webhook URL is read from the env file (never sourced), it is not in this script.
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+UPS={{ nut_client_ups_name }}@{{ nut_client_server }}:{{ nut_client_port }}
+ENV_FILE={{ nut_client_discord_env }}
+UPSC_TIMEOUT={{ nut_client_notify_upsc_timeout }}
+CURL_TIMEOUT={{ nut_client_notify_curl_timeout }}
+
+# Only the known upsmon events pass, anything else is shown as UNKNOWN.
+case "${NOTIFYTYPE:-}" in
+  ONLINE|ONBATT|LOWBATT|FSD|COMMOK|COMMBAD|SHUTDOWN|REPLBATT|NOCOMM|NOPARENT) type=$NOTIFYTYPE ;;
+  *) type=UNKNOWN ;;
+esac
+msg="$*"
+
+# Numbers only, anything else (error text, empty) becomes "unknown".
+read_var() {
+  local v
+  v=$(timeout "$UPSC_TIMEOUT" upsc "$UPS" "$1" 2>/dev/null | head -n 1) || v=""
+  if [[ $v =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%s' "$v"; else printf 'unknown'; fi
+}
+charge=$(read_var battery.charge)
+runtime=$(read_var battery.runtime)
+
+# JSON is built by python from argv, so no value is ever interpreted as code or JSON syntax.
+text=$(python3 - "$type" "$msg" "$charge" "$runtime" "$(hostname -s)" <<'PY'
+import sys
+t, msg, charge, runtime, host = sys.argv[1:6]
+charge_s = charge + " %" if charge != "unknown" else "unknown"
+if runtime == "unknown":
+    runtime_s = "unknown"
+else:
+    runtime_s = "%d min" % round(float(runtime) / 60)
+msg = " ".join(msg.split())[:1000]
+out = "%s: UPS %s" % (host, t)
+if msg:
+    out += " - " + msg
+out += " | battery %s, runtime %s" % (charge_s, runtime_s)
+print(out)
+PY
+) || text="UPS $type (battery $charge, runtime ${runtime}s)"
+
+logger -t nut-notify -p daemon.notice -- "$text"
+
+url=$(sed -n 's/^DISCORD_WEBHOOK_URL=//p' "$ENV_FILE" 2>/dev/null | head -n 1 | tr -d "\"'\r")
+if [[ ! $url =~ ^https:// ]]; then
+  logger -t nut-notify -p daemon.warning -- "no Discord webhook in $ENV_FILE, alert not sent to Discord"
+  exit 0
+fi
+
+payload=$(python3 -c 'import json,sys; print(json.dumps({"content": sys.argv[1], "allowed_mentions": {"parse": []}}))' "$text") || exit 0
+
+# The URL goes through stdin so it does not show in the process list.
+printf 'url = "%s"\n' "$url" | curl --silent --show-error --output /dev/null \
+  --connect-timeout 3 --max-time "$CURL_TIMEOUT" \
+  --header 'Content-Type: application/json' --data-binary "$payload" --config - \
+  2>/dev/null || logger -t nut-notify -p daemon.warning -- "Discord alert failed (ignored)"
+exit 0

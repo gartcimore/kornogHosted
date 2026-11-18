@@ -27,7 +27,7 @@ and look in the UniFi client list. A device with a hand-set static IP does not a
 | `.40` | Philips SmartTV (living room) | TV | UniFi fixed IP | UniFi shows hostname `USWFlexMiniChas`, which is a wrong name set by the TV. It is plugged into port 2 of the USW Flex Mini "salon" | Flex Mini salon 2 |
 | `.44` | `drogo` | NAS | UniFi fixed IP | `drogo.kornoglab.fr` | rack 10 |
 | `.54` | `ymir` | Synology NAS | UniFi fixed IP | `ymir.kornoglab.fr`. NFS: `data`, `proxmox-backup` | rack 11+12 (LACP bond) |
-| `.138` | UniFi UPS 2U | UPS, network UPS (NUT) server | to confirm | Powers orisa, drogo and ymir. drogo and ymir use it as their network UPS server. orisa does not read it yet, orisa's battery monitoring is still to do | rack 16 (FE) |
+| `.138` | UniFi UPS 2U | UPS, network UPS (NUT) server | to confirm | Powers orisa, drogo and ymir. drogo and ymir use it as their network UPS server. The Ansible role `nut_client` is prepared (orisa as NUT secondary client, shuts down with the NAS units, Discord alerts) but not applied: orisa reads the UPS only after it is applied, see `orisa-proxmox-setup.md` 7b | rack 16 (FE) |
 | `.190` | Shelly Pro 3EM | energy meter | UniFi fixed IP | MAC suffix `66:64` | ? |
 
 "Switch port" names the switch and port(s) as shown in UniFi: `rack` is the 16-port rack switch (section below). `?` means not recorded yet, fill it in when you next look. A bonded device uses two ports and is listed with both.

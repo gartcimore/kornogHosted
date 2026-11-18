@@ -11,6 +11,7 @@ Rebuilds the configuration described in [`docs/orisa-proxmox-setup.md`](../docs/
 | `host_vars/<guest>.yml` | One file per guest: VMID, IP, size, mounts (`lxc:`) and compose stacks. This is the single place an IP is written for a guest |
 | `site.yml` | Plays: host and guest creation on orisa, then software inside the guests |
 | `roles/proxmox_host` | Packages, key-only SSH, NFS data mount, guest start ordering, vzdump tmpdir, backup storage and nightly job, web UI admin group/user/ACL |
+| `roles/nut_client` | NUT client (`upsmon`) for the UniFi UPS 2U: shuts orisa down with the NAS units, Discord alerts with the battery level. Tag `nut`. Needs `nut/discord.env` |
 | `roles/lxc_guest` | Downloads the template, creates and starts each guest |
 | `roles/docker_host` | Time zone, Docker CE and compose plugin |
 | `roles/compose_stack` | Copies `rproxy/` (and other stacks) to `/opt/<name>` and runs `docker compose up -d` |
@@ -37,9 +38,13 @@ ansible-playbook site.yml --check --diff -K
 ansible-playbook site.yml -K
 ```
 
-Useful subsets: `--tags host`, `--tags lxc`, `--tags docker`, `--tags stacks`, and `--limit rproxy` for one guest.
+Useful subsets: `--tags host`, `--tags nut`, `--tags lxc`, `--tags docker`, `--tags stacks`, and `--limit rproxy` for one guest.
 
 On an already-built host the dry run should show no changes on orisa. The first real run changes two cosmetic things on `rproxy`: the Docker apt source file is rewritten in the module's format, and apt refreshes.
+
+## UPS monitoring and the Discord webhook (`nut/discord.env`)
+
+The `nut_client` role needs the Discord webhook URL, which is a secret. It lives in `nut/discord.env` at the repo root (one line, `DISCORD_WEBHOOK_URL=...`, template in `nut/discord.env.sample`). The plain file is gitignored, like `arr/.env`: create it, then `git secret add nut/discord.env` and `git secret hide`, and commit the `.secret` file. `git secret reveal` restores it on a new checkout. The role stops with an error if the file is missing or has no URL, instead of installing a setup without alerts. The file is installed on orisa as `/etc/nut/discord.env` (0640, `root:nut`). Task output never shows it. Steps to apply and check: `docs/orisa-proxmox-setup.md`, section 7b.
 
 ## Adding a guest
 

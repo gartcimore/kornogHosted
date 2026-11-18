@@ -1,0 +1,28 @@
+---
+# The UniFi UPS 2U runs a NUT server. orisa is a secondary client: it only reads the
+# UPS status and shuts itself down, it never tells the UPS to cut power.
+nut_client_ups_name: ups
+nut_client_server: 192.168.0.138
+nut_client_port: 3493
+# The server has "Login Credential" OFF, so these are not real secrets. They are the
+# Synology network-UPS client defaults. Whether upsmon is accepted with them is not
+# verified: check `journalctl -u nut-monitor` after the first start.
+nut_client_user: monuser
+nut_client_password: secret
+# orisa has one power supply, and one is enough to keep it running.
+nut_client_minsupplies: 1
+# Seconds. DEADTIME is how long a silent UPS is trusted before it counts as dead.
+nut_client_pollfreq: 5
+nut_client_pollfreqalert: 5
+nut_client_deadtime: 15
+nut_client_finaldelay: 5
+nut_client_hostsync: 15
+# Goes through systemd, so Proxmox stops the guests in order (123, 122, 121).
+nut_client_shutdowncmd: /sbin/shutdown -h +0
+nut_client_notify_script: /usr/local/sbin/nut-notify
+nut_client_discord_env: /etc/nut/discord.env
+# Plain-text webhook file on the controller, never committed (git-secret).
+nut_client_discord_env_local: "{{ playbook_dir }}/../nut/discord.env"
+# Seconds the notify script may spend on upsc and on curl, so it never delays a shutdown.
+nut_client_notify_upsc_timeout: 3
+nut_client_notify_curl_timeout: 5
