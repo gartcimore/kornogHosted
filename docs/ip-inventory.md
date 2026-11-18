@@ -41,7 +41,7 @@ and look in the UniFi client list. A device with a hand-set static IP does not a
 | `.23` | 123 | `arr` | *arr apps, qBittorrent + gluetun, Seerr, Homarr, Calibre-web | running |
 | `.24` | 124 | `services` | `kornogHosted` services (valkey, zigbee2mqtt, ...) | reserved, not created |
 | `.25` | 125 | `auth` | Authelia, see [auth-and-hardening-plan.md](auth-and-hardening-plan.md) | planned, not created |
-| `.26` | 126 | `db` | shared PostgreSQL 17 (native, TLS), `db.kornoglab.fr` points here directly (UniFi A record to create). See [orisa-proxmox-setup.md](orisa-proxmox-setup.md) 7c | prepared, not applied |
+| `.26` | 126 | `db` | shared PostgreSQL 17 (native, TLS), `db.kornoglab.fr` points here directly (UniFi A record, created). See [orisa-proxmox-setup.md](orisa-proxmox-setup.md) 7c | running |
 
 Guests have no switch port of their own: they are bridged behind orisa's bond (rack ports 7+8), so UniFi shows one of their MACs on those ports.
 

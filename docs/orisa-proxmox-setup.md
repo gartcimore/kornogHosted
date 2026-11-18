@@ -29,7 +29,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 - [x] Backup job `backup-c3366771-401a` (02:00, all guests, `ymir-backup`) exists; restore of `rproxy` tested.
 
 - [x] Step 8 (`arr`): LXC 123 at `192.168.0.23` (4 cores, 6 GB RAM, 24 GB disk, start order 3), created by the Ansible playbook with UID/GID 1000 mapped to host 1000, `/dev/net/tun`, and read-write mounts of Ymir (`/mnt/dataYmir`, NFS) and drogo (`/mnt/dataDrogoRW` on the host, `/mnt/data` in the guest). Runs the `parr` stack (pinned commit, plus `arr/docker-compose.override.yml`, which turns Traefik and socket-proxy off) under `arr.service`. gluetun connects with kernel WireGuard (module loaded at boot by the playbook). Data copied from heimdall's `/docker/appdata` on 2026-11-17 and verified (file counts and sizes identical). Routes in `rproxy/traefik/dynamic/routes-arr.yml`, UniFi records moved to `192.168.0.21`. Details and lessons: [arr-guest-plan.md](arr-guest-plan.md).
-- [ ] PostgreSQL service: LXC `db` (126, `192.168.0.26`, native PostgreSQL 17, TLS, nightly dumps to Ymir), Ansible role `postgres_server`, **prepared, not applied**. See [section 7c](#7c-postgresql-service-db-guest--prepared-not-applied).
+- [x] PostgreSQL service: LXC `db` (126, `192.168.0.26`, native PostgreSQL 17, TLS, nightly dumps to Ymir), Ansible role `postgres_server`, **applied 2026-11-18** and verified (roles, databases, TLS, first backup, restore). See [section 7c](#7c-postgresql-service-db-guest--applied).
 - [ ] UPS and safe shutdown: Ansible role `nut_client` written and dry-run checked, **prepared, not applied** (orisa does not read the UPS yet). See [section 7b](#7b-ups-and-safe-shutdown).
 - Drogo is mounted twice on the host: `/mnt/dataDrogo` (read-only, owner 101000, for jellyfin) and `/mnt/dataDrogoRW` (read-write, owner 1000, for arr). Each guest's own `mpN` line decides which one it sees.
 
@@ -38,7 +38,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 1. Check the app integrations that use hostnames after the DNS move (Prowlarr apps, Bazarr, Seerr, download clients). Deferred Homarr integration edits and tile removal: see step 7 of the runbook in `arr-guest-plan.md`.
 2. Watch `df -h` and `sensors` on orisa for a few days (transcoding plus the *arr stack). Retire heimdall's stack for good after about a week: remove its stopped containers, then the data it still holds in `/docker/appdata` (the rollback copy, about 6 GB with Jellyfin).
 3. Build the `services` guest (valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks. PostgreSQL no longer goes there: it has its own guest `db` (next item).
-3b. Apply the `db` PostgreSQL guest (prepared, not applied): commands and open points in [section 7c](#7c-postgresql-service-db-guest--prepared-not-applied).
+3b. PostgreSQL `db` guest: applied. Left to do: Infisical's client address, a certificate warning a week before expiry, the guest time zone (see [section 7c](#7c-postgresql-service-db-guest--applied)).
 4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
 5. Apply the `nut_client` role (webhook file, dry run, `--tags nut`, checks: section 7b), then set the BIOS "power on after AC loss".
 6. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
@@ -370,7 +370,7 @@ The server has "Login Credential" off, so it should not check anything. That is 
 
 ---
 
-## 7c. PostgreSQL service (`db` guest) — prepared, not applied
+## 7c. PostgreSQL service (`db` guest) — applied
 
 Shared PostgreSQL for the other services, in its own LXC guest `db` (VMID 126, `192.168.0.26`, name `db.kornoglab.fr`). Native Debian 13 packages, no Docker. It replaces the old, never-used `postgres/` compose folder. Code: Ansible role [`postgres_server`](../ansible/roles/postgres_server), guest definition and service list in [`ansible/host_vars/db.yml`](../ansible/host_vars/db.yml). Nothing of it has been applied to orisa yet.
 
@@ -464,6 +464,17 @@ To rebuild a whole server (after a new `db` guest and the role are applied, the 
 - **Infisical** ([requirements](https://infisical.com/docs/self-hosting/configuration/requirements), [environment variables](https://infisical.com/docs/self-hosting/configuration/envars)): PostgreSQL only, "extensively tested" on 16, 14 or newer recommended. The database user needs all privileges on its database, including creating schemas, tables and indexes (the owning role has them). Connection through `DB_CONNECTION_URI` with `sslmode` in the query string. It also needs Redis, which is not part of this service.
 - **Authelia** ([PostgreSQL storage](https://www.authelia.com/configuration/storage/postgres/)): any PostgreSQL version still supported upstream. Options `address`, `database`, `schema` (default `public`), `username`, `password`, `tls`. It verifies the server certificate against the system trust store and migrates its own schema. It recommends a random alphanumeric password of 64 characters or more, which matches the generator.
 - **Not verified:** neither page names required extensions or an encoding, so none are installed (UTF-8 databases). Check each service's first start log. Whether Infisical's Node client verifies a Let's Encrypt chain with the container's trust store without `DB_ROOT_CERT` is unconfirmed (the documentation shows that variable only for cloud providers). Try `sslmode=verify-full` first. The Authelia version-support page that was fetched was truncated, so that criterion comes from the search snippet of its GitHub source.
+
+### Applied and verified (2026-11-18, on the real guest)
+- Guest `db` created by the playbook (`ansible-playbook site.yml -K --limit orisa,db`), role applied to it. A second run: `changed=0`.
+- **Lesson:** the first run stopped at "Application roles" with "No start of json char found". The Debian LXC template has no `sudo`, and Ansible's default become method is `sudo`. The task output was hidden by `no_log`, so the cause only showed with a password-free ad hoc call. The role-creation tasks now use `become_method: ansible.builtin.su`. The podman tests did not catch it.
+- `\du`: `authelia` and `infisical` have no attributes (not superusers), only `postgres` does. `\l`: each database is owned by its role, UTF-8, with the `PUBLIC` connect right revoked.
+- TLS: `openssl s_client -starttls postgres -connect db.kornoglab.fr:5432 -verify_hostname db.kornoglab.fr` returns `Verification: OK`, issuer Let's Encrypt. This works from any address, the handshake comes before the `pg_hba` check.
+- First backup: `/mnt/dataYmir/postgres_backup/<date>/` holds `globals.sql`, `infisical.dump`, `authelia.dump`, owned by `100000`, mode 0600. A second run on the same day replaces the folder.
+- Restore test: `authelia.dump` restored into a scratch database and dropped (the database is still empty, so no tables yet). The restore of real data has not been tested.
+- Failure path: with the sentinel file removed, `systemctl start postgres-backup` fails with exit 1 and writes nothing. The Discord message was not confirmed. After the test the sentinel was recreated from inside the guest (`install -m 0600 /dev/null /mnt/pgbackup/.pgbackup-sentinel`, owned by `100000` on Ymir).
+- The guest clock is UTC (the timers: dump 03:30 UTC, certificate sync 04:00 UTC); the Docker guests are on Europe/Paris.
+- Still to do: a client address for Infisical (`clients` in `ansible/host_vars/db.yml`), the early certificate-expiry warning, a real restore once a service has data, and the first `psql` login over TLS from an allowed address (the future `auth` guest).
 
 ### Tested (2026-11-18, throwaway Debian 13 systemd containers, since removed)
 
