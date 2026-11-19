@@ -282,6 +282,13 @@ Disk layout on a single 512 GB drive: `local` (ISOs, templates, backups) and `lo
 
 - [x] Datacenter > Notifications: Webhook target `discord` (POST to the Discord webhook URL, token stored as secret `token` and referenced as `{{ secrets.token }}`, header `Content-Type: application/json`, body `{"content": "**[{{ severity }}]** {{ escape title }}"}`), added to `default-matcher`. Keep the body short: Discord rejects messages over 2000 characters (HTTP 400), and backup failure logs exceed that. Other options are SMTP, Gotify and ntfy. Mail from `smartd` and cron still uses the local mailer (no relay configured).
 - [ ] SMART: `smartctl -a /dev/nvme0` for a baseline. Proxmox runs `smartd`; set the email in `/etc/smartd.conf` or rely on notifications.
+- [x] Homarr Proxmox integration (2026-11-19): a dashboard widget showing node, containers, storage and CPU/RAM. It uses a dedicated read-only account in the built-in `pve` realm, because the docs say PAM users may not work with the API. Commands (run from the desktop, single-quote anything with `!` or bash history expansion eats it):
+  - `pveum user add homarr@pve --comment 'Homarr read-only monitoring'` and `pveum acl modify / --users homarr@pve --roles PVEAuditor`
+  - `pveum user token add homarr@pve homarr --privsep 1 --output-format json` (the secret is shown once: pipe it straight to `wl-copy`, never to the screen)
+  - `pveum acl modify / --tokens 'homarr@pve!homarr' --roles PVEAuditor`. A token created with privilege separation has its own permissions, so the grant is needed for the user and for the token, and the token has to exist first.
+  - `PVEAuditor` is read only (`Datastore`, `Mapping`, `Pool`, `SDN`, `Sys`, `VM`, `VM.GuestAgent` audit privileges). Check with `pveum user permissions 'homarr@pve!homarr' --path /`.
+  - In Homarr (Management > Integrations > Proxmox): URL `https://orisa.kornoglab.fr:8006` (the certificate is valid, nothing to disable), username `homarr`, realm `pve`, token ID `homarr`, the secret as API key. Homarr builds the token as `<username>@<realm>!<tokenId>`.
+  - Result: 1 node, 4 containers, 0 VMs, 3 storages. Open: the integration is stored with an `http://` URL. Port 8006 redirects plain HTTP to HTTPS, so it works, but it should be edited to `https://` (Homarr asks for the key again on save). Revoke with `pveum user token remove homarr@pve homarr`.
 - [ ] `sensors-detect` then `sensors` to check temperatures. Mini PCs run warm under sustained transcoding.
 - [ ] Optional: expose metrics (Datacenter > Metric Server) to InfluxDB/Prometheus, and add a Proxmox integration in Homarr.
 - [x] UPS: the UniFi UPS 2U powers orisa and both NAS units. Monitoring and safe shutdown on orisa: section 7b (prepared, not applied).
