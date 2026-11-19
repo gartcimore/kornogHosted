@@ -4,6 +4,8 @@
 # can use (it refuses a key readable by others), then reloads PostgreSQL.
 # Every check runs before anything is changed. On any failure the current copy stays
 # in place and the exit status is not 0. Prints "installed" or "unchanged".
+# A valid certificate with fewer than WARN_DAYS days left is installed as usual and a
+# warning goes to Discord (pg-notify) on every run until it is renewed. An expired one fails.
 set -euo pipefail
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 SRC={{ postgres_server_certs_src | quote }}
@@ -11,6 +13,8 @@ DEST={{ postgres_server_tls_dir | quote }}
 FQDN={{ postgres_server_fqdn | quote }}
 VER={{ postgres_server_version }}
 KEEP=3
+WARN_DAYS={{ postgres_server_cert_warn_days | int }}
+NOTIFY={{ postgres_server_sbin | quote }}/pg-notify
 fail() { echo "pg-tls-sync: $*" >&2; exit 1; }
 cert=$SRC/fullchain.pem
 key=$SRC/key.pem
@@ -25,12 +29,25 @@ openssl x509 -in "$cert" -noout -checkhost "$FQDN" 2>/dev/null | grep -q 'does m
 pub_cert=$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null | sha256sum) || fail "cannot read the certificate public key"
 pub_key=$(openssl pkey -in "$key" -pubout 2>/dev/null | sha256sum) || fail "$key is not a private key"
 [[ $pub_cert == "$pub_key" ]] || fail "the key does not belong to the certificate"
+# Whole days left, from the certificate's end date (a number, never text from the file).
+warn_if_close() {
+  [[ $WARN_DAYS -gt 0 ]] || return 0
+  openssl x509 -in "$cert" -noout -checkend $((WARN_DAYS * 86400)) >/dev/null && return 0
+  local end left
+  end=$(date -d "$(openssl x509 -in "$cert" -noout -enddate | sed 's/^notAfter=//')" +%s 2>/dev/null) || end=0
+  left=$(( (end - $(date +%s)) / 86400 ))
+  [[ $left -ge 0 ]] || left=0
+  echo "pg-tls-sync: certificate has $left day(s) left (warning below $WARN_DAYS)" >&2
+  "$NOTIFY" --cert-expiry "$left" || true
+}
 if cmp -s "$cert" "$DEST/current/fullchain.pem" 2>/dev/null && cmp -s "$key" "$DEST/current/key.pem" 2>/dev/null; then
+  warn_if_close
   echo unchanged
   exit 0
 fi
 mkdir -p "$DEST"
-new=$DEST/$(date +%Y%m%d%H%M%S)
+# UTC in the name, so sorting by name stays right if the guest time zone changes.
+new=$DEST/$(date -u +%Y%m%d%H%M%S)
 previous=$(readlink "$DEST/current" 2>/dev/null || true)
 install -d -o postgres -g postgres -m 0750 "$new"
 install -o postgres -g postgres -m 0644 "$cert" "$new/fullchain.pem"
@@ -55,4 +72,5 @@ cur=$(readlink "$DEST/current")
 for d in $(find "$DEST" -mindepth 1 -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]{14}' | sort -r | tail -n +$((KEEP + 1))); do
   [[ $d == "$cur" ]] || rm -rf "$d"
 done
+warn_if_close
 echo installed

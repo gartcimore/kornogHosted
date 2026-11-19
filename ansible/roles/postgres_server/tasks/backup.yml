@@ -24,3 +24,11 @@
     name: postgres-backup.timer
     enabled: true
     state: started
+- name: The timers pick up a changed time zone
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - postgres-backup.timer
+    - pg-tls-sync.timer
+  when: postgres_server_tz_link is changed or postgres_server_tz_name is changed

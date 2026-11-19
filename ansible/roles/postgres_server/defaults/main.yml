@@ -19,6 +19,11 @@ postgres_server_secrets_file: "{{ playbook_dir }}/../postgres/db-passwords.env"
 # Server certificate: the wildcard certificate from the acme container, mounted read-only.
 postgres_server_certs_src: /certs
 postgres_server_tls_dir: /etc/postgresql/tls
+# A valid certificate with fewer days left than this still gets installed, and a Discord
+# warning goes out on every daily run until it is renewed. 0 turns the warning off.
+postgres_server_cert_warn_days: 14
+# Guest time zone, as on the Docker guests. The timers below use this local time.
+postgres_server_timezone: Europe/Paris
 # Logical backups. The directory must be a bind mount of a folder on Ymir that holds
 # the sentinel file, otherwise the dump refuses to run.
 postgres_server_backup_dir: /mnt/pgbackup

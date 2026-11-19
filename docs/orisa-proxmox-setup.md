@@ -38,7 +38,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 1. Check the app integrations that use hostnames after the DNS move (Prowlarr apps, Bazarr, Seerr, download clients). Deferred Homarr integration edits and tile removal: see step 7 of the runbook in `arr-guest-plan.md`.
 2. Watch `df -h` and `sensors` on orisa for a few days (transcoding plus the *arr stack). Retire heimdall's stack for good after about a week: remove its stopped containers, then the data it still holds in `/docker/appdata` (the rollback copy, about 6 GB with Jellyfin).
 3. Build the `services` guest (valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks. PostgreSQL no longer goes there: it has its own guest `db` (next item).
-3b. PostgreSQL `db` guest: applied. Left to do: Infisical's client address, a certificate warning a week before expiry, the guest time zone (see [section 7c](#7c-postgresql-service-db-guest--applied)).
+3b. PostgreSQL `db` guest: applied. Left to do: Infisical's client address (see [section 7c](#7c-postgresql-service-db-guest--applied)).
 4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
 5. Apply the `nut_client` role (webhook file, dry run, `--tags nut`, checks: section 7b), then set the BIOS "power on after AC loss".
 6. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
@@ -402,8 +402,9 @@ Shared PostgreSQL for the other services, in its own LXC guest `db` (VMID 126, `
 
 The server uses the wildcard `*.kornoglab.fr` certificate (it covers `db.kornoglab.fr`). The acme folder is bind-mounted read-only at `/certs` (as for `rproxy`). PostgreSQL refuses a key readable by others, so `pg-tls-sync` copies the files to `/etc/postgresql/tls/<timestamp>/` (key 0600 `postgres`) and swaps the symlink `current`.
 
-- It runs 2 minutes after boot and daily at 04:00 (`pg-tls-sync.timer`, `Persistent=true`). A path unit would not see a change made by another host on NFS.
+- It runs 2 minutes after boot and daily at 04:00 guest time, Europe/Paris (`pg-tls-sync.timer`, `Persistent=true`). A path unit would not see a change made by another host on NFS.
 - Checks before anything changes: files present, readable and not empty, certificate parses, not expired, covers `db.kornoglab.fr`, key matches the certificate. Any failure exits non-zero, keeps the current copy, and PostgreSQL keeps running. The failure goes to Discord (below).
+- **Early expiry warning:** a certificate that is valid and passes every check but has fewer than `postgres_server_cert_warn_days` days left (default 14, 0 turns it off) is still installed as usual, and `pg-tls-sync` calls `pg-notify --cert-expiry <days>`. Discord gets "`db: WARNING the TLS certificate for PostgreSQL has N day(s) left. ...`" on every daily run until the certificate is renewed (the acme container renews about 30 days before expiry, so a warning means the renewal stopped). `N` is whole days, rounded down, computed from the certificate's end date. The message is fixed text plus that number, so no input can add to it. An expired certificate is unchanged behavior: failure and the `OnFailure` alert. To see the warning without touching a certificate, in `db`: `sed 's/^WARN_DAYS=.*/WARN_DAYS=60/' /usr/local/sbin/pg-tls-sync > /tmp/s && bash /tmp/s; rm /tmp/s` (the real certificate has fewer than 60 days left; the copy only runs the checks, installs nothing when the files are unchanged, and posts one warning). `pg-notify --cert-expiry 3` posts a test message directly.
 - Identical files: no change and no reload. Otherwise the new copy is installed and PostgreSQL reloaded. If the reload command fails, the old link is put back. The last three copies are kept.
 - The first Ansible run executes the script once, so a missing certificate stops the run with a clear message.
 
@@ -411,15 +412,18 @@ Clients connect to `db.kornoglab.fr` with `sslmode=verify-full`. This needs the 
 
 ### Backups
 
-The nightly vzdump job (02:00, all guests) covers the guest. In addition, `postgres-backup.timer` runs `pg-backup` daily at 03:30:
+The nightly vzdump job (02:00 Paris, all guests, storage `ymir-backup`) covers the guest. In addition, `postgres-backup.timer` runs `pg-backup` daily at 03:30 guest time (Europe/Paris). The vzdump job of 2026-11-18 took about 2 minutes for the three existing guests, so 90 minutes separate the two jobs:
 
 - `globals.sql` (`pg_dumpall --globals-only`, holds the password hashes) and `<db>.dump` (`pg_dump --format=custom`) per database, in `/mnt/pgbackup/<YYYY-MM-DD>/`. Each dump is checked with `pg_restore --list`. The folder is written as `<date>.partial` and renamed when complete.
+- Folder names use the guest's local date. Around midnight UTC, Paris is already on the next day, so a manual run between 23:00 and 24:00 UTC (winter) is filed under the Paris date. If the 03:30 run later finds a folder of the same name, it replaces it (existing logic). Retention sorts by name, so it is unaffected.
 - `/mnt/pgbackup` is a bind mount of `/mnt/dataYmir/postgres_backup` (`mp1`), so the dumps are outside the guest, and vzdump skips it.
 - **A missing mount can never fill the guest disk.** The script stops unless `/mnt/pgbackup` is a mount point and the file `.pgbackup-sentinel` exists in it. Otherwise it writes nothing and exits non-zero.
 - **Owner on Ymir:** the dump runs as root of the guest, which is uid `100000` on the host (`/etc/subuid`), and the share has no root squash. The folder is therefore `100000:100000`, mode 0700, so no other NFS client can read the password hashes. The files are 0600. This is the same uid that vzdump runs as. The first backup in the guest is the real proof that writing works.
 - **Retention (proposal, open point):** the newest 14 daily folders plus the folders dated the 1st of the newest 6 months. The total size stays small. Pruning runs only after a successful dump and only touches names of the form `YYYY-MM-DD`.
 - **How a failure is noticed (open point):** `postgres-backup.service` and `pg-tls-sync.service` have `OnFailure=` pointing to a unit that runs `pg-notify`, which posts "`db: <unit> failed at <time>`" to the Discord webhook (same pattern as `nut_client`, message without any secret). Alternatives: mail (no relay is configured), Proxmox notifications (they only cover vzdump jobs, not jobs inside a guest), a dead-man's switch such as Healthchecks (needs an external service). Cost of the chosen option: a copy of the webhook secret (`nut/discord.env`) in the guest at `/etc/postgresql/discord.env` (mode 0600, root). If the guest were compromised, the attacker could post to that channel. Not detected: the guest down or the timer not firing. A dead guest shows in the vzdump notifications. Set `postgres_server_notify_enabled: false` to go without.
 
+### Time zone
+The role sets the guest time zone (`postgres_server_timezone`, default `Europe/Paris`, as on the Docker guests): symlink `/etc/localtime` and `/etc/timezone`, package `tzdata`. When it changes, the role restarts the two timers so they recompute their next run. Effect: timers use local time, so `postgres-backup.timer` and `pg-tls-sync.timer` still say 03:30 and 04:00, which is now Paris time. The dump moves from 03:30 UTC to 02:30 UTC in winter (01:30 UTC in summer), that is from 04:30 to 03:30 Paris time. It stays 90 minutes after vzdump (02:00 Paris), which finishes in minutes. The certificate sync copies are now named in UTC, so sorting stays right whichever zone is set. PostgreSQL itself keeps `timezone = 'Etc/UTC'` (set when the cluster was created), so timestamps seen by applications do not change. The guest's `date`, journal and the Discord messages show Paris time with the zone name.
 ### Restore procedure (tested locally, see "Tested")
 
 On `db`, as root. `<date>` is a folder of `/mnt/pgbackup`. The dump files belong to root, so give them to `pg_restore` on standard input.
@@ -473,8 +477,8 @@ To rebuild a whole server (after a new `db` guest and the role are applied, the 
 - First backup: `/mnt/dataYmir/postgres_backup/<date>/` holds `globals.sql`, `infisical.dump`, `authelia.dump`, owned by `100000`, mode 0600. A second run on the same day replaces the folder.
 - Restore test: `authelia.dump` restored into a scratch database and dropped (the database is still empty, so no tables yet). The restore of real data has not been tested.
 - Failure path: with the sentinel file removed, `systemctl start postgres-backup` fails with exit 1 and writes nothing. The Discord message was not confirmed. After the test the sentinel was recreated from inside the guest (`install -m 0600 /dev/null /mnt/pgbackup/.pgbackup-sentinel`, owned by `100000` on Ymir).
-- The guest clock is UTC (the timers: dump 03:30 UTC, certificate sync 04:00 UTC); the Docker guests are on Europe/Paris.
-- Still to do: a client address for Infisical (`clients` in `ansible/host_vars/db.yml`), the early certificate-expiry warning, a real restore once a service has data, and the first `psql` login over TLS from an allowed address (the future `auth` guest).
+- Follow-ups applied 2026-11-19 (`ansible-playbook site.yml --limit db --tags postgres`): first run `changed=5` (time zone, the two scripts, timer restart), second run `changed=0`. `date` on the guest shows CET, the timers now fire at 03:30 and 04:00 Paris time. The warning path was exercised with the threshold raised to 60 days: it reported "certificate has 35 day(s) left" and left the installed files unchanged. The Discord message of that test was not confirmed. The real certificate ends 2026-12-25, so with the default 14 days no warning is expected before renewal.
+- Still to do: a real restore once a service has data, and the first `psql` login over TLS from an allowed address (the future `auth` guest). Infisical is shelved, so its `clients` entry stays empty.
 
 ### Tested (2026-11-18, throwaway Debian 13 systemd containers, since removed)
 
@@ -496,6 +500,8 @@ To rebuild a whole server (after a new `db` guest and the role are applied, the 
 5. PostgreSQL 17 is the packaged major version. Infisical documents 16 as the tested one.
 6. The BIOS iGPU memory reservation (3 GB) could be lowered to free RAM. The effect on Jellyfin transcoding is not verified.
 7. Folder owner on Ymir is uid 100000: proven only by the first backup in the guest.
+
+Resolved: the early certificate expiry warning and the guest time zone (see "TLS certificate" and "Time zone" above).
 
 ---
 

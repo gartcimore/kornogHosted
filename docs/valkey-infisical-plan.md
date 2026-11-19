@@ -1,6 +1,8 @@
 # Plan: shared Valkey guest and Infisical
 
-Status: **noted 2026-11-18, not started.** Nothing here is built or applied. It records what was decided and what is still open so the work can resume.
+Status: **shelved 2026-11-19, not started.** Decision: no need for a secrets manager for now, so neither the Valkey guest nor Infisical will be built. Nothing here is built or applied. The plan is kept so the work can resume if the need comes back.
+
+What already exists and stays as it is: the `infisical` role and database on the `db` guest (harmless, empty, no network client allowed), and its password in `postgres/db-passwords.env.secret`. Remove both from `ansible/host_vars/db.yml` and the secrets file only if you want the guest to carry nothing unused. `valkey/` and `infisical/` in the repo are old, never deployed files.
 
 ## Goal
 

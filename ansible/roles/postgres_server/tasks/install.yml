@@ -22,6 +22,7 @@
       - curl
       - openssl
       - ca-certificates
+      - tzdata
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -36,3 +37,18 @@
     - "{{ postgres_server_tls_dir }}"
   # The postgres user exists only after the package is installed.
   when: not ansible_check_mode
+- name: Time zone
+  ansible.builtin.file:
+    src: "../usr/share/zoneinfo/{{ postgres_server_timezone }}"
+    dest: /etc/localtime
+    state: link
+    force: true
+  register: postgres_server_tz_link
+- name: Time zone name
+  ansible.builtin.copy:
+    dest: /etc/timezone
+    content: "{{ postgres_server_timezone }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+  register: postgres_server_tz_name

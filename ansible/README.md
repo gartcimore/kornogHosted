@@ -13,7 +13,7 @@ Rebuilds the configuration described in [`docs/orisa-proxmox-setup.md`](../docs/
 | `roles/proxmox_host` | Packages, key-only SSH, NFS data mount, guest start ordering, vzdump tmpdir, backup storage and nightly job, web UI admin group/user/ACL |
 | `roles/nut_client` | NUT client (`upsmon`) for the UniFi UPS 2U: shuts orisa down with the NAS units, Discord alerts with the battery level. Tag `nut`. Needs `nut/discord.env` |
 | `roles/lxc_guest` | Downloads the template, creates and starts each guest |
-| `roles/postgres_server` | Native PostgreSQL 17 for the `db` guest: roles and databases per service, TLS with the wildcard certificate (kept fresh by a timer), `pg_hba` per client address, nightly dumps to Ymir with a failure alert. Tag `postgres`. Needs `postgres/db-passwords.env` and `nut/discord.env`. Prepared, not applied |
+| `roles/postgres_server` | Native PostgreSQL 17 for the `db` guest: roles and databases per service, TLS with the wildcard certificate (kept fresh by a timer), `pg_hba` per client address, nightly dumps to Ymir with a failure alert, a Discord warning when the certificate has fewer than `postgres_server_cert_warn_days` (14) days left, guest time zone `postgres_server_timezone` (Europe/Paris). Tag `postgres`. Needs `postgres/db-passwords.env` and `nut/discord.env`. Prepared, not applied |
 | `roles/docker_host` | Time zone, Docker CE and compose plugin |
 | `roles/compose_stack` | Copies `rproxy/` (and other stacks) to `/opt/<name>` and runs `docker compose up -d` |
 

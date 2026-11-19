@@ -1,20 +1,31 @@
 #!/bin/bash
 # {{ ansible_managed }}
-# Sends "<host>: <unit> failed" to Discord. Never fails the caller, never prints the URL.
+# Sends a message to Discord. Never fails the caller, never prints the URL.
+#   pg-notify <unit>                  "<host>: <unit> failed at <time>"
+#   pg-notify --cert-expiry <days>    "<host>: the TLS certificate expires in <days> day(s) ..."
+# Every message is fixed text plus a validated unit name or a whole number.
 # The webhook URL is read from the env file (never sourced) and passed to curl on stdin.
 set -u
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ENV_FILE={{ postgres_server_discord_env | quote }}
-unit=${1:-unknown}
-[[ $unit =~ ^[A-Za-z0-9@_.:-]{1,100}$ ]] || unit=unknown
-text="$(hostname -s): $unit failed at $(date '+%F %T')"
-logger -t pg-notify -p daemon.err -- "$text"
+if [[ ${1:-} == --cert-expiry ]]; then
+  days=${2:-}
+  [[ $days =~ ^[0-9]{1,5}$ ]] && days=$((10#$days)) || days=unknown
+  text="$(hostname -s): WARNING the TLS certificate for PostgreSQL has $days day(s) left. Check that the acme renewal still runs. ($(date '+%F %T %Z'))"
+  level=daemon.warning
+else
+  unit=${1:-unknown}
+  [[ $unit =~ ^[A-Za-z0-9@_.:-]{1,100}$ ]] || unit=unknown
+  text="$(hostname -s): $unit failed at $(date '+%F %T %Z')"
+  level=daemon.err
+fi
+logger -t pg-notify -p "$level" -- "$text"
 url=$(sed -n 's/^DISCORD_WEBHOOK_URL=//p' "$ENV_FILE" 2>/dev/null | head -n 1 | tr -d "\"'\r")
 if [[ ! $url =~ ^https:// ]]; then
   logger -t pg-notify -p daemon.warning -- "no Discord webhook in $ENV_FILE, not sent"
   exit 0
 fi
-# The text only holds characters validated above, so it is safe inside JSON.
+# The text only holds fixed text and characters validated above, so it is safe inside JSON.
 payload=$(printf '{"content": "%s", "allowed_mentions": {"parse": []}}' "$text")
 printf 'url = "%s"\n' "$url" | curl --silent --show-error --output /dev/null \
   --connect-timeout 3 --max-time 10 \

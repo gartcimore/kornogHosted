@@ -1,4 +1,14 @@
 ---
+- name: Certificate warning threshold is a whole number of days
+  ansible.builtin.assert:
+    that: (postgres_server_cert_warn_days | string) is match('^[0-9]{1,4}$')
+    quiet: true
+    fail_msg: "postgres_server_cert_warn_days must be a whole number, 0 or more."
+- name: Time zone name is a plain zoneinfo name
+  ansible.builtin.assert:
+    that: postgres_server_timezone is match('^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+){0,2}$')
+    quiet: true
+    fail_msg: "postgres_server_timezone must look like Europe/Paris."
 - name: Service names are plain lowercase identifiers
   ansible.builtin.assert:
     that: item.name is match('^[a-z][a-z0-9_]*$')
