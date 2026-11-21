@@ -9,6 +9,8 @@
       tags: [nut]
     - role: postfix_relay
       tags: [postfix]
+    - role: disk_alert
+      tags: [diskalert]
     - role: lxc_guest
       tags: [lxc]
 

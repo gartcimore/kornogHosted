@@ -25,7 +25,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 - [x] Step 4b: orisa moved to the rack, LACP bond of `nic0` and `nic1` (ports 7 and 8 aggregated), applied and verified 2026-11-18. Failover tested on `nic0` (about 0.6 s outage). Throughput tried: no gain between orisa and Ymir, as expected.
 - [x] Step 8 (`rproxy`): LXC 121 at `192.168.0.21` (Debian 13, unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB). Wildcard cert bind-mounted read-only at `/certs` from the host's `/mnt/dataYmir/containers/volumes/acme/certs`. Docker CE installed. Traefik (file provider only, config in `rproxy/`, deployed to `/opt/rproxy`) tested with `curl --resolve` against heimdall routes: valid cert, HTTP redirects to HTTPS. DNS still points at heimdall.
 
-- [x] Step 8 (`jellyfin`): LXC 122 at `192.168.0.22` (4 cores, 4 GB RAM, 16 GB disk, start order 2), created by the Ansible playbook. Media mounted read-only at `/mnt/dataYmir/media`, iGPU passed through (see "Pass through the iGPU"), hardware transcoding verified. Currently a fresh Jellyfin with a throwaway admin: heimdall's config (4.4 GB) is not migrated yet and DNS still points at heimdall.
+- [x] Step 8 (`jellyfin`): LXC 122 at `192.168.0.22` (4 cores, 4 GB RAM, 32 GB disk since 2026-11-21 (created with 16 GB), start order 2), created by the Ansible playbook. Media mounted read-only at `/mnt/dataYmir/media`, iGPU passed through (see "Pass through the iGPU"), hardware transcoding verified. Currently a fresh Jellyfin with a throwaway admin: heimdall's config (4.4 GB) is not migrated yet and DNS still points at heimdall.
 - [x] Backup job `backup-c3366771-401a` (02:00, all guests, `ymir-backup`) exists; restore of `rproxy` tested.
 
 - [x] Step 8 (`arr`): LXC 123 at `192.168.0.23` (4 cores, 6 GB RAM, 24 GB disk, start order 3), created by the Ansible playbook with UID/GID 1000 mapped to host 1000, `/dev/net/tun`, and read-write mounts of Ymir (`/mnt/dataYmir`, NFS) and drogo (`/mnt/dataDrogoRW` on the host, `/mnt/data` in the guest). Runs the `parr` stack (pinned commit, plus `arr/docker-compose.override.yml`, which turns Traefik and socket-proxy off) under `arr.service`. gluetun connects with kernel WireGuard (module loaded at boot by the playbook). Data copied from heimdall's `/docker/appdata` on 2026-11-17 and verified (file counts and sizes identical). Routes in `rproxy/traefik/dynamic/routes-arr.yml`, UniFi records moved to `192.168.0.21`. Details and lessons: [arr-guest-plan.md](arr-guest-plan.md).
@@ -625,6 +625,33 @@ Switching from relay to direct: set `postfix_relay_mode: direct` (or remove the 
 ### Tested (2026-11-21, throwaway Debian 13 container without network, since removed)
 Postfix 3.10.13, a Python `aiosmtpd` stub as the MX or relay, a test CA, stand-ins for `curl` and `journalctl`. The container runs with `--network none` (only `lo`) and every provider and MX name (`smtp.mail.ovh.net`, `ssl0.ovh.net`, `smtp.gmail.com`, `mx1.mail.ovh.net`, `mx.test`) is mapped to the stub in `/etc/hosts`, so nothing can reach the Internet. Covered: direct apply without any secret file, idempotence, delivery (envelope `pve-bounce@...`, header From kept), 550 and 451 behavior, bounce routing to the sink (nothing in root's mailbox), the queue alert with de-duplication and recovery, hostile input in the sink and the helper script, relay mode with login, wrong password, wrong-name and self-signed certificates, IPv4 only, file modes, switching modes. Details: `.agents/tasks/postfix-relay/report.md`. **Not tested:** real delivery through OVH's MX to Gmail via the role, real OVH or Gmail login, the matcher change on the real host, OVH's limits, and Proxmox's own evaluation of the expression (checked against the documented semantics only).
 ---
+## 7e. Disk usage alert (role `disk_alert`)
+
+On 2026-11-21 the `jellyfin` guest filled its 16 GB root disk (transcode segments in `/srv/jellyfin/config/cache/transcodes` were never deleted) and Jellyfin failed with SQLite "disk is full", with no warning. The disk was grown with `pct resize 122 rootfs +16G` (32 GB, 25% used after emptying the transcodes). `host_vars/jellyfin.yml` now says `disk_gb: 32`. Guests are configured only at creation, so this edit documents the live state and changes nothing on a running guest.
+
+### What it does and why
+- `/usr/local/sbin/disk-usage-alert`, run every 15 minutes by `disk-usage-alert.timer` on orisa. One timer on the host, because the host already has the webhook file, `pct` and `lvs`; a timer per guest would need the webhook copied into each guest and a change in every guest definition.
+- Checks: host `/`, the thin pool `pve/data` (data and metadata, the metadata being the one that breaks a thin pool when it fills), and `/` of every guest in the inventory group `guests` (`pct exec <vmid> -- df -P /`: today 121 rproxy, 122 jellyfin, 123 arr, 126 db). A stopped guest is skipped and logged. The guest list comes from the inventory, so a new guest is covered after the next run of the role.
+- Alert at 85% used (`disk_alert_threshold`). One message per run lists everything at or above the threshold, with name, VMID and mount, for example `122 jellyfin mount /: 90% used`.
+- A given item alerts again only after 24 h (`disk_alert_repeat_hours`), or at once when another item crosses the threshold. An item recovers when it is under 80% (threshold minus `disk_alert_hysteresis`, so a value hovering around 85% does not flood), with a "back to normal" message.
+- Never fails the system: `ExecStart=-`, every error is logged (`journalctl -t disk-usage-alert`) and ignored, `curl` limited to 5 s, messages cut at 1900 characters. If Discord does not answer, nothing is recorded and the next run tries again. The webhook is read from `/etc/nut/discord.env` (installed by the `nut_client` role) and passed to `curl` on stdin.
+- Not covered: inodes, bind-mounted media shares (Ymir, drogo), other mount points inside a guest. The Jellyfin cause itself (transcode cleanup) is not fixed by this role.
+
+### Apply and verify
+```bash
+# workstation, dry run: shows the script and the two systemd units
+cd ansible && ansible-playbook site.yml --tags diskalert --check --diff -K
+# apply
+ansible-playbook site.yml --tags diskalert -K
+# host: run it once by hand (silent when everything is under 85%), then read the log
+sudo systemctl start disk-usage-alert.service; journalctl -t disk-usage-alert -n 20 --no-pager
+systemctl list-timers disk-usage-alert.timer
+```
+To see a real message, lower the threshold for one run: `ansible-playbook site.yml --tags diskalert -K -e disk_alert_threshold=20`, start the service, then run again without `-e` (a "back to normal" message follows).
+
+### Tested (2026-11-21, local, fake `df`, `pct`, `lvs` and `curl`, no webhook contacted)
+Under threshold (silent), crossing (one message with the item), repeat suppressed, a second item crossing (new message), hysteresis band (silent), recovery message, repeat after 24 h, Discord failure (exit 0, state not saved, retried), missing webhook file (exit 0, logged), unreadable `df` output (exit 0).
+
 ## 8. Guests for the `parr` stack
 
 ### Layout: one guest per service or grouped?

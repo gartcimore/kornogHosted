@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Post a Discord alert when a disk or the thin pool is nearly full
+[Service]
+Type=oneshot
+# The leading "-" ignores a failure: this check must never mark the system degraded.
+ExecStart=-{{ disk_alert_script }}
+TimeoutStartSec=180
+Nice=10
+IOSchedulingClass=idle

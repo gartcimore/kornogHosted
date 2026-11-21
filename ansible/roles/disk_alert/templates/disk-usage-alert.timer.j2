@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Check disk usage on orisa and its guests
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec={{ disk_alert_interval }}
+AccuracySec=1min
+[Install]
+WantedBy=timers.target

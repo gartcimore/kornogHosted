@@ -1,0 +1,40 @@
+---
+- name: The role is off until disk_alert_enabled is true
+  ansible.builtin.debug:
+    msg: disk_alert is disabled (disk_alert_enabled false), nothing is changed.
+  when: not (disk_alert_enabled | bool)
+- name: Disk usage alert
+  when: disk_alert_enabled | bool
+  block:
+    - name: Check the settings
+      ansible.builtin.assert:
+        that:
+          - disk_alert_threshold | int > 0
+          - disk_alert_threshold | int <= 100
+          - disk_alert_hysteresis | int >= 0
+          - disk_alert_repeat_hours | int > 0
+        quiet: true
+    - name: Alert script
+      ansible.builtin.template:
+        src: disk-usage-alert.j2
+        dest: "{{ disk_alert_script }}"
+        owner: root
+        group: root
+        mode: "0750"
+    - name: Alert service and timer
+      ansible.builtin.template:
+        src: "disk-usage-alert.{{ item }}.j2"
+        dest: "/etc/systemd/system/disk-usage-alert.{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [service, timer]
+      notify: Reload systemd
+    - name: Run pending handlers before the timer is enabled
+      ansible.builtin.meta: flush_handlers
+    - name: The alert timer is enabled and running
+      ansible.builtin.systemd_service:
+        name: disk-usage-alert.timer
+        enabled: true
+        state: started
+      when: not ansible_check_mode

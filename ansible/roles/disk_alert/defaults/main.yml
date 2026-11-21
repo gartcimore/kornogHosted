@@ -1,0 +1,24 @@
+---
+# Disk usage alert on orisa, posted to Discord. One timer on the host checks the host
+# root filesystem, the LVM-thin pool (data and metadata) and the root filesystem of every
+# guest in the inventory group `guests` (through `pct exec`).
+disk_alert_enabled: true
+disk_alert_script: /usr/local/sbin/disk-usage-alert
+disk_alert_state_dir: /var/lib/disk-usage-alert
+disk_alert_discord_env: /etc/nut/discord.env
+# Alert at this percentage used or more.
+disk_alert_threshold: 85
+# An alert ends only when usage is this many points under the threshold (no flapping).
+disk_alert_hysteresis: 5
+# The same alert is posted again only after this many hours.
+disk_alert_repeat_hours: 24
+disk_alert_interval: 15min
+# Volume group and thin pool of the Proxmox default install (local-lvm).
+disk_alert_thin_pool: pve/data
+disk_alert_host_mounts: ["/"]
+disk_alert_curl_timeout: 5
+disk_alert_cmd_timeout: 20
+disk_alert_curl: curl
+disk_alert_df: df
+disk_alert_lvs: lvs
+disk_alert_pct: pct

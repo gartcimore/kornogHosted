@@ -54,3 +54,4 @@ backup_job:
   mode: snapshot
   compress: zstd
   prune: keep-daily=7,keep-weekly=4,keep-monthly=3
+postfix_relay_enabled: true

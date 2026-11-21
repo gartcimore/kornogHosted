@@ -7,7 +7,9 @@ lxc:
   cores: 4
   memory: 4096
   swap: 512
-  disk_gb: 16
+  # 2026-11-21: grown from 16 to 32 with `pct resize 122 rootfs +16G` (transcode
+  # segments filled the disk). Recorded here to match the live guest.
+  disk_gb: 32
   startup_order: 2
   pct_options:
     # Media from Ymir, read-only. World-readable, so no id-map is needed.

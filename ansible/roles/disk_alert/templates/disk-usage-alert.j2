@@ -1,0 +1,167 @@
+#!/usr/bin/python3
+# {{ ansible_managed }}
+# Posts to Discord when a filesystem or the LVM-thin pool of orisa is {{ disk_alert_threshold | int }}% used or more.
+# Checks: host mounts, thin pool data and metadata, root filesystem of each guest (pct exec).
+# One message per run. An alert is repeated only after the repeat time, it ends with a
+# "back to normal" message once usage is under threshold minus hysteresis.
+# Never fails and never blocks: short timeouts, every error is logged and ignored.
+import json
+import os
+import re
+import socket
+import subprocess
+import syslog
+import time
+THRESHOLD = {{ disk_alert_threshold | int }}
+HYSTERESIS = {{ disk_alert_hysteresis | int }}
+REPEAT = {{ disk_alert_repeat_hours | int }} * 3600
+STATE_DIR = "{{ disk_alert_state_dir }}"
+STATE = os.path.join(STATE_DIR, "state.json")
+ENV_FILE = "{{ disk_alert_discord_env }}"
+CURL = "{{ disk_alert_curl }}"
+DF = "{{ disk_alert_df }}"
+LVS = "{{ disk_alert_lvs }}"
+PCT = "{{ disk_alert_pct }}"
+CURL_TIMEOUT = {{ disk_alert_curl_timeout | int }}
+CMD_TIMEOUT = {{ disk_alert_cmd_timeout | int }}
+THIN_POOL = "{{ disk_alert_thin_pool }}"
+HOST_MOUNTS = {{ disk_alert_host_mounts | to_json }}
+GUESTS = [
+{% for g in groups['guests'] | default([]) | sort %}
+    ({{ hostvars[g].lxc.vmid | int }}, "{{ g }}"),
+{% endfor %}
+]
+os.environ["PATH"] = "/usr/sbin:/usr/bin:/sbin:/bin"
+os.umask(0o077)
+def log(text):
+    syslog.openlog("disk-usage-alert")
+    syslog.syslog(syslog.LOG_NOTICE, text)
+def clean(text, limit):
+    text = re.sub(r"[^\x20-\x7e]", " ", str(text))
+    return " ".join(text.split())[:limit]
+def run(argv):
+    res = subprocess.run(argv, capture_output=True, text=True, errors="replace",
+                         timeout=CMD_TIMEOUT, check=False)
+    return res.returncode, res.stdout
+def df_percent(argv):
+    # POSIX output: last line, 5th column "NN%".
+    rc, out = run(argv)
+    lines = out.strip().splitlines()
+    if rc != 0 or len(lines) < 2:
+        return None
+    cols = lines[-1].split()
+    if len(cols) >= 5 and re.fullmatch(r"\d{1,3}%", cols[4]):
+        return int(cols[4][:-1])
+    return None
+def measure():
+    """Returns {key: (label, percent)}. A check that cannot be read is left out."""
+    found = {}
+    for mount in HOST_MOUNTS:
+        try:
+            pct = df_percent([DF, "-P", mount])
+        except Exception as exc:  # noqa: BLE001
+            log("host %s check error ignored: %s" % (mount, clean(exc, 100)))
+            pct = None
+        if pct is not None:
+            found["host:" + mount] = ("orisa (host) %s" % mount, pct)
+    try:
+        rc, out = run([LVS, "--noheadings", "--separator", ",", "-o", "data_percent,metadata_percent", THIN_POOL])
+        parts = out.strip().split(",")
+        if rc == 0 and len(parts) == 2:
+            found["pool:data"] = ("orisa (host) LVM-thin pool %s data" % THIN_POOL, int(float(parts[0])))
+            found["pool:meta"] = ("orisa (host) LVM-thin pool %s metadata" % THIN_POOL, int(float(parts[1])))
+    except Exception as exc:  # noqa: BLE001
+        log("thin pool check error ignored: %s" % clean(exc, 100))
+    for vmid, name in GUESTS:
+        try:
+            pct = df_percent([PCT, "exec", str(vmid), "--", DF, "-P", "/"])
+        except Exception as exc:  # noqa: BLE001
+            log("guest %s check error ignored: %s" % (vmid, clean(exc, 100)))
+            pct = None
+        if pct is None:
+            log("guest %s (%s) not readable (stopped?), skipped" % (vmid, name))
+        else:
+            found["guest:%d" % vmid] = ("%d %s mount /" % (vmid, name), pct)
+    return found
+def webhook():
+    try:
+        with open(ENV_FILE, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("DISCORD_WEBHOOK_URL="):
+                    url = line.split("=", 1)[1].strip().strip("\"'")
+                    if re.fullmatch(r"https://[^\s\"\\]+", url):
+                        return url
+    except OSError:
+        pass
+    return None
+def send(text):
+    url = webhook()
+    if not url:
+        log("no Discord webhook in %s, alert not sent" % ENV_FILE)
+        return False
+    payload = json.dumps({"content": text[:1900], "allowed_mentions": {"parse": []}})
+    try:
+        # The URL goes through stdin so it does not show in the process list.
+        res = subprocess.run(
+            [CURL, "--silent", "--show-error", "--fail", "--output", "/dev/null",
+             "--connect-timeout", "3", "--max-time", str(CURL_TIMEOUT),
+             "--header", "Content-Type: application/json",
+             "--data-binary", payload, "--config", "-"],
+            input='url = "%s"\n' % url, text=True, capture_output=True,
+            timeout=CURL_TIMEOUT + 5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        log("Discord alert failed (ignored)")
+        return False
+    if res.returncode != 0:
+        log("Discord alert failed (ignored)")
+        return False
+    return True
+def load_state():
+    try:
+        with open(STATE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+def save_state(data):
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    tmp = STATE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, STATE)
+def main():
+    now = int(time.time())
+    host = socket.gethostname().split(".")[0]
+    found = measure()
+    # state: key -> time of the last alert message (only keys currently in alert)
+    state = {k: v for k, v in load_state().items() if isinstance(v, int)}
+    active = {}
+    for key, (label, pct) in found.items():
+        if pct >= THRESHOLD or (key in state and pct > THRESHOLD - HYSTERESIS):
+            active[key] = (label, pct)
+    due = [k for k in sorted(active) if k not in state or now - state[k] >= REPEAT]
+    cleared = [k for k in sorted(state) if k in found and k not in active]
+    new_state = {k: v for k, v in state.items() if k not in cleared}
+    changed = False
+    if due:
+        lines = ["%s: disk usage at or above %d%%:" % (host, THRESHOLD)]
+        lines += ["- %s: %d%% used" % (active[k][0], active[k][1]) for k in sorted(active)]
+        if send("\n".join(lines)):
+            for k in due:
+                new_state[k] = now
+            changed = True
+    if cleared:
+        lines = ["%s: disk usage back to normal:" % host]
+        lines += ["- %s: %d%% used" % (found[k][0], found[k][1]) for k in cleared]
+        if send("\n".join(lines)):
+            changed = True
+        else:
+            for k in cleared:
+                new_state[k] = state[k]
+    if changed or new_state != state:
+        save_state(new_state)
+try:
+    main()
+except Exception as exc:  # noqa: BLE001 - this script must never fail the system
+    log("error ignored: %s" % clean(exc, 200))
+raise SystemExit(0)
