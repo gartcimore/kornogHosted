@@ -7,6 +7,8 @@
       tags: [host]
     - role: nut_client
       tags: [nut]
+    - role: postfix_relay
+      tags: [postfix]
     - role: lxc_guest
       tags: [lxc]
 

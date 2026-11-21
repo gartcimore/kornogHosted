@@ -7,3 +7,5 @@ arr/.env
 nut/discord.env
 # Plaintext PostgreSQL role passwords (roles/postgres_server); commit postgres/db-passwords.env.secret only.
 postgres/db-passwords.env
+# Plaintext mail relay login (roles/postfix_relay); commit postfix/relay.env.secret only.
+postfix/relay.env

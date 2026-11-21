@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+# Direct delivery. The ENVELOPE sender of mail created on this host (root, cron, smartd,
+# Proxmox notifications) becomes the bounce sink address, so a bounce never comes back to
+# root and never re-enters the Proxmox notification system. sender_canonical_classes is
+# envelope_sender: the header From (root@<hostname>) is not touched.
+# The empty sender of bounces is left alone.
+/^[^@]+$/                                   {{ postfix_relay_bounce_sink }}
+/^[^@]+@orisa(\.kornoglab\.fr)?$/           {{ postfix_relay_bounce_sink }}
+/^[^@]+@localhost(\.[^@]*)?$/               {{ postfix_relay_bounce_sink }}

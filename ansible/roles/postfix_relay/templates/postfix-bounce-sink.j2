@@ -1,0 +1,26 @@
+#!/usr/bin/python3
+# {{ ansible_managed }}
+# Alias target of {{ postfix_relay_bounce_sink }}: receives the bounce notices of mail sent by
+# this host. It only writes ONE syslog line (tag postfix-bounce, subject only, addresses
+# masked). It sends nothing, so it can never start a loop. Always exits 0.
+import re
+import sys
+import syslog
+
+try:
+    head = sys.stdin.buffer.read(65536).decode("utf-8", "replace")
+    subject = ""
+    for line in head.splitlines():
+        if line.lower().startswith("subject:"):
+            subject = line[8:]
+            break
+        if not line.strip():
+            break
+    subject = re.sub(r"[^\x20-\x7e]", " ", subject)
+    subject = re.sub(r"\S+@\S+", "<address>", subject)
+    subject = " ".join(subject.split())[:150] or "(no subject)"
+    syslog.openlog("postfix-bounce")
+    syslog.syslog(syslog.LOG_WARNING, "bounce notice discarded: " + subject)
+except Exception:  # noqa: BLE001 - never fail, Postfix would bounce the bounce
+    pass
+raise SystemExit(0)

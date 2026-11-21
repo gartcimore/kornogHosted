@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+# OVH and Gmail require the From address to be the authenticated mailbox. These rules
+# rewrite the envelope sender and the header From of mail created on this host
+# (root, cron, smartd, Proxmox): unqualified names and orisa / localhost addresses.
+# The empty sender of bounces is left alone. Display names are kept.
+/^[^@]+$/                                   {{ postfix_relay_user }}
+/^[^@]+@orisa(\.kornoglab\.fr)?$/           {{ postfix_relay_user }}
+/^[^@]+@localhost(\.[^@]*)?$/               {{ postfix_relay_user }}

@@ -1,0 +1,104 @@
+# Postfix on orisa. Two delivery modes:
+#   direct (default): Postfix delivers itself on port 25 to the MX of the recipient domain,
+#     for a recipient whose MX accepts unauthenticated mail (an OVH redirection address on
+#     kornoglab.fr that forwards to the user's mailbox). No secret, no SASL. Gmail itself
+#     refuses this (550-5.7.26), which is why the recipient is the OVH redirection address.
+#   relay (optional fallback, off): authenticated SMTP relay (OVH smtp.mail.ovh.net with a
+#     mailbox on kornoglab.fr, or the gmail profile). Needs postfix/relay.env on the
+#     controller (git-secret).
+# Nothing happens until postfix_relay_enabled is true.
+postfix_relay_enabled: false
+postfix_relay_mode: direct
+
+# --- Direct mode ---------------------------------------------------------------------
+# Opportunistic TLS toward the MX (falls back to plain text when the peer has no TLS).
+postfix_relay_direct_tls_level: may
+# Address that mail-to-root uses, set on root@pam by the notification step (empty = leave
+# root@pam as it is, which is the recommended default).
+postfix_relay_root_email: ""
+
+# --- Relay mode (optional fallback) --------------------------------------
+# Pick a profile, or override host, port and TLS mode one by one.
+# ovh:   smtp.mail.ovh.net:465 (implicit TLS), the server OVH documents for MX Plan accounts.
+#        The certificate (CN ns0.ovh.net, issuer Sectigo) lists smtp.mail.ovh.net, ssl0.ovh.net
+#        and ns0.ovh.net as alternative names, so the name check passes. Email Pro and Exchange
+#        use other servers: override postfix_relay_host (shown in the OVH console).
+# gmail: smtp.gmail.com:587 (STARTTLS), an app password (needs 2-step verification).
+#        The certificate (issuer Google Trust Services) lists smtp.gmail.com.
+# Both chains verify against the Debian CA bundle from orisa (checked 2026-11-21).
+postfix_relay_profile: ovh
+postfix_relay_profiles:
+  ovh:
+    host: smtp.mail.ovh.net
+    port: 465
+    tls_mode: wrapper
+    password_strip_spaces: false
+  gmail:
+    host: smtp.gmail.com
+    port: 587
+    tls_mode: starttls
+    # Google shows app passwords in groups of four letters separated by spaces.
+    password_strip_spaces: true
+postfix_relay_host: "{{ postfix_relay_profiles[postfix_relay_profile].host }}"
+postfix_relay_port: "{{ postfix_relay_profiles[postfix_relay_profile].port }}"
+# wrapper = implicit TLS (port 465), starttls = upgrade on the submission port (587).
+postfix_relay_tls_mode: "{{ postfix_relay_profiles[postfix_relay_profile].tls_mode }}"
+postfix_relay_password_strip_spaces: "{{ postfix_relay_profiles[postfix_relay_profile].password_strip_spaces }}"
+
+# --- TLS ---------------------------------------------------------------------------
+# secure = the chain must verify AND the certificate must carry the expected name.
+# That is the strongest Postfix level for a relay, and it works with both providers.
+# Never use "may" or "encrypt" for a relay that receives a password.
+postfix_relay_tls_level: secure
+# nexthop = the name written in relayhost (postfix_relay_host) must be in the certificate.
+postfix_relay_tls_cert_match: nexthop
+postfix_relay_tls_cafile: /etc/ssl/certs/ca-certificates.crt
+postfix_relay_tls_protocols: ">=TLSv1.2"
+
+# --- Secret file on the controller (git-secret, like nut/discord.env) --------------
+# Two lines: RELAY_USER=<full mailbox address>, RELAY_PASSWORD=<password or app password>.
+# Created by postfix/set-relay-secret.sh. The user name doubles as the sender address.
+postfix_relay_secret_local: "{{ playbook_dir }}/../postfix/relay.env"
+postfix_relay_sasl_file: /etc/postfix/sasl_passwd
+postfix_relay_sender_map: /etc/postfix/sender_canonical
+
+# --- Loop breakers (direct mode; in relay mode the sender is the mailbox) ----------
+# Bounces of mail that orisa sends go to this local address, which is an alias to a script
+# that only writes one log line (and the queue alert posts it to Discord). They never reach
+# root, /root/.forward or the Proxmox notification system, so a failed delivery cannot
+# produce a new notification. The header From stays root@<hostname>.
+postfix_relay_bounce_sink: pve-bounce@orisa.kornoglab.fr
+postfix_relay_bounce_script: /usr/local/sbin/postfix-bounce-sink
+# Messages that cannot be delivered are given up after this time (Postfix default: 5d).
+postfix_relay_queue_lifetime: 2d
+
+# --- Notification routing (Proxmox), only touched when this is true ---------------
+# Run it as a separate, later step: -e postfix_relay_manage_matchers=true
+postfix_relay_manage_matchers: false
+# Discord keeps getting everything through default-matcher. Email goes to the target below
+# through its own matcher. The matcher always excludes severity unknown and type system-mail,
+# which is how bounce notices and forwarded local mail (cron, smartd) look to Proxmox.
+# Empty lists mean "all types" and "all known severities (info, notice, warning, error)".
+postfix_relay_email_types: []
+postfix_relay_email_severities: []
+postfix_relay_email_matcher: email
+postfix_relay_email_target: mail-to-root
+postfix_relay_discord_target: discord
+postfix_relay_default_matcher: default-matcher
+postfix_relay_default_comment: All notifications go to Discord. Email only through the email matcher
+
+# --- Queue alert to Discord --------------------------------------------------------
+postfix_relay_alert_enabled: true
+postfix_relay_alert_script: /usr/local/sbin/postfix-queue-alert
+postfix_relay_alert_state_dir: /var/lib/postfix-queue-alert
+postfix_relay_alert_discord_env: /etc/nut/discord.env
+# Alert when the oldest message waits longer than this, or the queue holds more messages.
+postfix_relay_alert_max_age_minutes: 60
+postfix_relay_alert_max_count: 20
+# The same situation is posted again only after this many hours.
+postfix_relay_alert_repeat_hours: 24
+# Timer interval.
+postfix_relay_alert_interval: 15min
+postfix_relay_alert_curl: curl
+postfix_relay_alert_journalctl: journalctl
+postfix_relay_alert_curl_timeout: 5

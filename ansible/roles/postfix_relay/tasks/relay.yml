@@ -1,0 +1,109 @@
+---
+# Relay mode only: the secret file, SASL plugins, SASL map and sender rewrite.
+# --- The secret file must be complete before anything is installed ---------------
+- name: Read the local relay secret file status
+  ansible.builtin.stat:
+    path: "{{ postfix_relay_secret_local }}"
+    get_checksum: false
+    get_mime: false
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  register: postfix_relay_stat
+- name: Read the relay secret file (value not shown)
+  ansible.builtin.slurp:
+    src: "{{ postfix_relay_secret_local }}"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  no_log: true
+  when: postfix_relay_stat.stat.exists
+  register: postfix_relay_slurp
+- name: Extract the mailbox address and the password (not shown)
+  ansible.builtin.set_fact:
+    postfix_relay_user: >-
+      {{ (postfix_relay_slurp.content | b64decode | regex_findall('(?m)^RELAY_USER=(.*)$') | first | default('')) | trim }}
+    postfix_relay_password: >-
+      {{ (postfix_relay_slurp.content | b64decode | regex_findall('(?m)^RELAY_PASSWORD=(.*)$') | first | default(''))
+         | regex_replace('\r$', '') | replace(' ', '' if postfix_relay_password_strip_spaces | bool else ' ') }}
+  no_log: true
+  when: postfix_relay_stat.stat.exists
+- name: Decide whether the secret file is usable (not shown)
+  ansible.builtin.set_fact:
+    postfix_relay_secret_ok: >-
+      {{ postfix_relay_stat.stat.exists
+         and (postfix_relay_user | default('')) is match('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
+         and (postfix_relay_password | default('') | length) > 0 }}
+  no_log: true
+- name: Stop if the secret file is missing or incomplete
+  ansible.builtin.assert:
+    that: postfix_relay_secret_ok | bool
+    quiet: true
+    fail_msg: >-
+      {{ postfix_relay_secret_local }} is missing or incomplete (it needs the lines RELAY_USER=<full
+      mailbox address> and RELAY_PASSWORD=<password>). Run postfix/set-relay-secret.sh, or
+      `git secret reveal` on a new checkout. Nothing was changed.
+  when: not ansible_check_mode
+- name: Dry run without a usable secret file
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ postfix_relay_secret_local }} is missing or incomplete. The dry run goes on so the
+      other changes are visible, but the SASL file and the sender rewrite map are skipped. A real run
+      stops here.
+  when: ansible_check_mode and not (postfix_relay_secret_ok | bool)
+
+# --- Package -----------------------------------------------------------------------
+- name: Install the SASL plugins and the certificate bundle
+  ansible.builtin.apt:
+    name:
+      - libsasl2-modules
+      - ca-certificates
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# --- Secret files (root only) ------------------------------------------------------
+- name: SASL login for the relay (secret, not shown)
+  ansible.builtin.template:
+    src: sasl_passwd.j2
+    dest: "{{ postfix_relay_sasl_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  diff: false
+  no_log: true
+  when: postfix_relay_secret_ok | bool
+  register: postfix_relay_sasl
+- name: Look at the hashed SASL file
+  ansible.builtin.stat:
+    path: "{{ postfix_relay_sasl_file }}.db"
+    get_checksum: false
+    get_mime: false
+  check_mode: false
+  register: postfix_relay_sasl_db
+- name: Build the hashed SASL file
+  ansible.builtin.command:
+    argv: [postmap, "hash:{{ postfix_relay_sasl_file }}"]
+  changed_when: true
+  when: >-
+    postfix_relay_secret_ok | bool
+    and (postfix_relay_sasl is changed or not postfix_relay_sasl_db.stat.exists)
+  notify: Reload postfix
+- name: The hashed SASL file is root only
+  ansible.builtin.file:
+    path: "{{ postfix_relay_sasl_file }}.db"
+    owner: root
+    group: root
+    mode: "0600"
+  when: postfix_relay_sasl_db.stat.exists or (postfix_relay_secret_ok | bool and not ansible_check_mode)
+- name: Sender rewrite map (the address is a secret input, not shown)
+  ansible.builtin.template:
+    src: sender_canonical.j2
+    dest: "{{ postfix_relay_sender_map }}"
+    owner: root
+    group: root
+    mode: "0644"
+  diff: false
+  no_log: true
+  when: postfix_relay_secret_ok | bool
+  notify: Reload postfix

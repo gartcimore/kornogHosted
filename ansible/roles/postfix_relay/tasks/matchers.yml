@@ -1,0 +1,99 @@
+---
+# Proxmox notification matchers, declared here and compared with the live state through
+# pvesh. Only differences are written, so a second run changes nothing.
+# 1. default-matcher: every notification goes to Discord only (no email target).
+# 2. The email matcher is an expression: severity must be a known one (never "unknown") AND
+#    the type must not be system-mail, and optionally the type must be in a list. Bounce
+#    notices and forwarded local mail are severity unknown and type system-mail, so they can
+#    never match it, whatever else is configured.
+- name: Read the live matchers
+  ansible.builtin.command:
+    argv: [pvesh, get, "/cluster/notifications/matchers/{{ item }}", --output-format, json]
+  loop:
+    - "{{ postfix_relay_default_matcher }}"
+    - "{{ postfix_relay_email_matcher }}"
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  register: postfix_relay_live
+- name: Compare with the wanted matchers
+  ansible.builtin.set_fact:
+    postfix_relay_default_cur: >-
+      {{ (postfix_relay_live.results[0].stdout | from_json) if postfix_relay_live.results[0].rc == 0 else {} }}
+    postfix_relay_email_cur: >-
+      {{ (postfix_relay_live.results[1].stdout | from_json) if postfix_relay_live.results[1].rc == 0 else {} }}
+    postfix_relay_email_expr:
+      all-of: >-
+        {{ [{'match': {'type': 'severity',
+                       'severities': postfix_relay_email_severities if postfix_relay_email_severities | length > 0
+                                     else ['info', 'notice', 'warning', 'error']}},
+            {'not': {'match': {'type': 'field', 'field': 'type', 'values': ['system-mail']}}}]
+           + ([{'match': {'type': 'field', 'field': 'type', 'values': postfix_relay_email_types}}]
+              if postfix_relay_email_types | length > 0 else []) }}
+- name: Decide what has to change
+  ansible.builtin.set_fact:
+    postfix_relay_default_todo: >-
+      {{ postfix_relay_default_cur == {}
+         or (postfix_relay_default_cur.target | default([]) | sort) != [postfix_relay_discord_target]
+         or (postfix_relay_default_cur.comment | default('')) != postfix_relay_default_comment }}
+    postfix_relay_email_todo: >-
+      {{ 'create' if postfix_relay_email_cur == {}
+         else 'set' if ((postfix_relay_email_cur.target | default([]) | sort) != [postfix_relay_email_target]
+                        or (postfix_relay_email_cur.expression | default('{}') | from_json) != postfix_relay_email_expr
+                        or (postfix_relay_email_cur.disable | default(false) | bool))
+         else 'none' }}
+- name: Show what would change (matchers)
+  ansible.builtin.debug:
+    msg: >-
+      {{ postfix_relay_default_matcher }}: {{ 'update to Discord only' if postfix_relay_default_todo | bool else 'already correct' }};
+      {{ postfix_relay_email_matcher }}: {{ postfix_relay_email_todo }}
+      (types: {{ postfix_relay_email_types | join(', ') or 'all' }},
+      severities: {{ postfix_relay_email_severities | join(', ') or 'all known' }})
+- name: Default matcher sends everything to Discord only
+  ansible.builtin.command:
+    argv:
+      - pvesh
+      - "{{ 'create' if postfix_relay_default_cur == {} else 'set' }}"
+      - "/cluster/notifications/matchers{{ '' if postfix_relay_default_cur == {} else '/' ~ postfix_relay_default_matcher }}"
+      - "{{ '--name' if postfix_relay_default_cur == {} else '--comment' }}"
+      - "{{ postfix_relay_default_matcher if postfix_relay_default_cur == {} else postfix_relay_default_comment }}"
+      - --target
+      - "{{ postfix_relay_discord_target }}"
+  changed_when: true
+  when: postfix_relay_default_todo | bool
+- name: Email matcher
+  ansible.builtin.command:
+    argv: >-
+      {{ ['pvesh', postfix_relay_email_todo,
+          '/cluster/notifications/matchers' ~ ('/' ~ postfix_relay_email_matcher if postfix_relay_email_todo == 'set' else '')]
+         + (['--name', postfix_relay_email_matcher] if postfix_relay_email_todo == 'create' else [])
+         + ['--comment', 'Email for known severities, never system-mail or unknown (no bounce loop)',
+            '--disable', '0', '--target', postfix_relay_email_target,
+            '--expression', postfix_relay_email_expr | to_json(separators=(',', ':'))] }}
+  changed_when: true
+  when: postfix_relay_email_todo in ['create', 'set']
+# --- The address that the mail-to-root target mails ------------------------------------
+# The target has no address of its own: it mails the email of root@pam (Datacenter >
+# Permissions > Users). Only touched when postfix_relay_root_email is not empty.
+- name: Read the email of root@pam (not shown)
+  ansible.builtin.command:
+    argv: [pvesh, get, /access/users/root@pam, --output-format, json]
+  changed_when: false
+  check_mode: false
+  no_log: true
+  register: postfix_relay_root_live
+  when: postfix_relay_root_email | length > 0
+- name: Decide whether the root@pam email has to change
+  ansible.builtin.set_fact:
+    postfix_relay_root_todo: "{{ (postfix_relay_root_live.stdout | from_json).email | default('') != postfix_relay_root_email }}"
+  no_log: true
+  when: postfix_relay_root_email | length > 0
+- name: Show what would change (root email)
+  ansible.builtin.debug:
+    msg: "root@pam email: {{ 'will be set to ' ~ postfix_relay_root_email if postfix_relay_root_todo | bool else 'already ' ~ postfix_relay_root_email }}"
+  when: postfix_relay_root_email | length > 0
+- name: Set the email of root@pam
+  ansible.builtin.command:
+    argv: [pvesh, set, /access/users/root@pam, --email, "{{ postfix_relay_root_email }}"]
+  changed_when: true
+  when: postfix_relay_root_email | length > 0 and postfix_relay_root_todo | bool

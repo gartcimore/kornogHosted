@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Post a Discord alert when the Postfix mail queue is old or long
+
+[Service]
+Type=oneshot
+# The leading "-" ignores a failure: this check must never mark the system degraded.
+ExecStart=-{{ postfix_relay_alert_script }}
+TimeoutStartSec=60
+Nice=10
+IOSchedulingClass=idle
+StateDirectory=postfix-queue-alert
+StateDirectoryMode=0700

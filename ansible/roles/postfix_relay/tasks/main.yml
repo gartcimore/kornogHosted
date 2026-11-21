@@ -1,0 +1,159 @@
+---
+- name: The role is off until postfix_relay_enabled is true
+  ansible.builtin.debug:
+    msg: >-
+      postfix_relay is disabled (postfix_relay_enabled: false), nothing is changed. Steps to
+      enable it: docs/orisa-proxmox-setup.md section 7d.
+  when: not (postfix_relay_enabled | bool)
+- name: Postfix relay
+  when: postfix_relay_enabled | bool
+  block:
+    - name: Check the provider settings
+      ansible.builtin.assert:
+        that:
+          - postfix_relay_mode in ['direct', 'relay']
+          - postfix_relay_tls_mode in ['wrapper', 'starttls']
+          - postfix_relay_tls_level in ['secure', 'verify']
+          - postfix_relay_direct_tls_level in ['may', 'encrypt', 'verify', 'secure']
+          - postfix_relay_port | int > 0
+          - postfix_relay_host is match('^[A-Za-z0-9.-]+$')
+          - (postfix_relay_email_types | select('match', '^[a-z][a-z-]*$') | list | length) == (postfix_relay_email_types | length)
+          - postfix_relay_email_types | intersect(['system-mail', 'unknown']) | length == 0
+          - postfix_relay_email_severities | difference(['info', 'notice', 'warning', 'error']) | length == 0
+          - postfix_relay_bounce_sink is match('^[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+$')
+        quiet: true
+        fail_msg: >-
+          Invalid settings. The mode is direct or relay, the relay TLS mode is wrapper or starttls, the TLS level is secure or verify
+          (never weaker), postfix_relay_email_types must not contain system-mail or unknown and
+          postfix_relay_email_severities only info, notice, warning, error (anything else would
+          bring back the bounce loop).
+
+    - name: Relay mode (secret file, SASL, sender rewrite)
+      ansible.builtin.include_tasks: relay.yml
+      when: postfix_relay_mode == 'relay'
+    # --- Direct mode: the bounce sink ----------------------------------------------------
+    - name: Bounce sink script
+      ansible.builtin.template:
+        src: postfix-bounce-sink.j2
+        dest: "{{ postfix_relay_bounce_script }}"
+        owner: root
+        group: root
+        mode: "0755"
+      when: postfix_relay_mode == 'direct'
+    - name: Sender map, direct mode (envelope sender of local mail becomes the bounce sink)
+      ansible.builtin.template:
+        src: sender_canonical_direct.j2
+        dest: "{{ postfix_relay_sender_map }}"
+        owner: root
+        group: root
+        mode: "0644"
+      when: postfix_relay_mode == 'direct'
+      notify: Reload postfix
+    - name: Alias of the bounce sink
+      ansible.builtin.lineinfile:
+        path: /etc/aliases
+        regexp: "^{{ postfix_relay_bounce_sink.split('@')[0] }}:"
+        line: "{{ postfix_relay_bounce_sink.split('@')[0] }}: \"|{{ postfix_relay_bounce_script }}\""
+      when: postfix_relay_mode == 'direct'
+      notify:
+        - Rebuild aliases
+        - Reload postfix
+    # --- main.cf -----------------------------------------------------------------------
+    # Only these keys are touched. The Proxmox defaults (inet_interfaces loopback-only,
+    # mynetworks 127.0.0.0/8, myhostname) stay as they are: no open relay.
+    # Keys of the other mode are removed, so switching back is a rollback.
+    - name: Settings for this mode
+      ansible.builtin.set_fact:
+        postfix_relay_settings: "{{ postfix_relay_common + (postfix_relay_relay_keys if postfix_relay_mode == 'relay' else postfix_relay_direct_keys) }}"
+      vars:
+        postfix_relay_common:
+          - { key: inet_protocols, value: ipv4 }
+          - { key: maximal_queue_lifetime, value: "{{ postfix_relay_queue_lifetime }}" }
+          - { key: bounce_queue_lifetime, value: "{{ postfix_relay_queue_lifetime }}" }
+        postfix_relay_direct_keys:
+          - { key: relayhost, value: "" }
+          - { key: smtp_tls_security_level, value: "{{ postfix_relay_direct_tls_level }}" }
+          - { key: smtp_sasl_auth_enable, state: absent }
+          - { key: smtp_sasl_password_maps, state: absent }
+          - { key: smtp_sasl_security_options, state: absent }
+          - { key: smtp_sasl_tls_security_options, state: absent }
+          - { key: smtp_tls_secure_cert_match, state: absent }
+          - { key: smtp_tls_wrappermode, state: absent }
+          - { key: smtp_tls_CAfile, state: absent }
+          - { key: smtp_tls_mandatory_protocols, state: absent }
+          - { key: smtp_tls_loglevel, state: absent }
+          - { key: sender_canonical_maps, value: "regexp:{{ postfix_relay_sender_map }}" }
+          - { key: sender_canonical_classes, value: envelope_sender }
+        postfix_relay_relay_keys:
+          - { key: relayhost, value: "[{{ postfix_relay_host }}]:{{ postfix_relay_port }}" }
+          - { key: smtp_sasl_auth_enable, value: "yes" }
+          - { key: smtp_sasl_password_maps, value: "hash:{{ postfix_relay_sasl_file }}" }
+          - { key: smtp_sasl_security_options, value: noanonymous }
+          - { key: smtp_sasl_tls_security_options, value: noanonymous }
+          - { key: smtp_tls_security_level, value: "{{ postfix_relay_tls_level }}" }
+          - { key: smtp_tls_secure_cert_match, value: "{{ postfix_relay_tls_cert_match }}" }
+          - { key: smtp_tls_wrappermode, value: "{{ 'yes' if postfix_relay_tls_mode == 'wrapper' else 'no' }}" }
+          - { key: smtp_tls_CAfile, value: "{{ postfix_relay_tls_cafile }}" }
+          - { key: smtp_tls_mandatory_protocols, value: "{{ postfix_relay_tls_protocols }}" }
+          - { key: smtp_tls_loglevel, value: "1" }
+          - { key: sender_canonical_maps, value: "regexp:{{ postfix_relay_sender_map }}" }
+          - { key: sender_canonical_classes, state: absent }
+    - name: Postfix settings in main.cf
+      ansible.builtin.lineinfile:
+        path: /etc/postfix/main.cf
+        regexp: "^{{ item.key }}\\s*="
+        line: "{{ item.key }} ={{ ' ' ~ item.value if item.value | default('') != '' else '' }}"
+        state: "{{ item.state | default('present') }}"
+      loop: "{{ postfix_relay_settings }}"
+      loop_control:
+        label: "{{ item.key }}"
+      notify: Reload postfix
+    - name: Postfix accepts the new configuration
+      ansible.builtin.command: postfix check
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode
+    - name: Postfix still listens on loopback only and relays for loopback only
+      ansible.builtin.command: postconf -h inet_interfaces mynetworks smtpd_relay_restrictions
+      changed_when: false
+      check_mode: false
+      register: postfix_relay_open
+      failed_when: >-
+        postfix_relay_open.stdout_lines[0] != 'loopback-only'
+        or postfix_relay_open.stdout_lines[1] is search('0\.0\.0\.0|::/0|/0')
+      when: not ansible_check_mode
+
+    # --- Queue alert -------------------------------------------------------------------
+    - name: Queue alert script
+      ansible.builtin.template:
+        src: postfix-queue-alert.j2
+        dest: "{{ postfix_relay_alert_script }}"
+        owner: root
+        group: root
+        mode: "0750"
+      when: postfix_relay_alert_enabled | bool
+    - name: Queue alert service and timer
+      ansible.builtin.template:
+        src: "postfix-queue-alert.{{ item }}.j2"
+        dest: "/etc/systemd/system/postfix-queue-alert.{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: [service, timer]
+      when: postfix_relay_alert_enabled | bool
+      notify: Reload systemd
+      tags: [postfix-systemd]
+    - name: Run pending handlers before the timer is enabled
+      ansible.builtin.meta: flush_handlers
+    - name: The queue alert timer is enabled and running
+      ansible.builtin.systemd_service:
+        name: postfix-queue-alert.timer
+        enabled: true
+        state: started
+      when: (postfix_relay_alert_enabled | bool) and not ansible_check_mode
+      tags: [postfix-systemd]
+
+    # --- Notification routing (separate, later step) -----------------------------------
+    - name: Notification matchers
+      ansible.builtin.include_tasks: matchers.yml
+      when: postfix_relay_manage_matchers | bool

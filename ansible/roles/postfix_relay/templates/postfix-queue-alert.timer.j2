@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Check the Postfix mail queue
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec={{ postfix_relay_alert_interval }}
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

@@ -31,6 +31,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 - [x] Step 8 (`arr`): LXC 123 at `192.168.0.23` (4 cores, 6 GB RAM, 24 GB disk, start order 3), created by the Ansible playbook with UID/GID 1000 mapped to host 1000, `/dev/net/tun`, and read-write mounts of Ymir (`/mnt/dataYmir`, NFS) and drogo (`/mnt/dataDrogoRW` on the host, `/mnt/data` in the guest). Runs the `parr` stack (pinned commit, plus `arr/docker-compose.override.yml`, which turns Traefik and socket-proxy off) under `arr.service`. gluetun connects with kernel WireGuard (module loaded at boot by the playbook). Data copied from heimdall's `/docker/appdata` on 2026-11-17 and verified (file counts and sizes identical). Routes in `rproxy/traefik/dynamic/routes-arr.yml`, UniFi records moved to `192.168.0.21`. Details and lessons: [arr-guest-plan.md](arr-guest-plan.md).
 - [x] PostgreSQL service: LXC `db` (126, `192.168.0.26`, native PostgreSQL 17, TLS, nightly dumps to Ymir), Ansible role `postgres_server`, **applied 2026-11-18** and verified (roles, databases, TLS, first backup, restore). See [section 7c](#7c-postgresql-service-db-guest--applied).
 - [ ] UPS and safe shutdown: Ansible role `nut_client` written and dry-run checked, **prepared, not applied** (orisa does not read the UPS yet). See [section 7b](#7b-ups-and-safe-shutdown).
+- [ ] Email notifications: Ansible role `postfix_relay` (direct delivery to an OVH redirection address, loop-proof matchers, queue alert; authenticated relay only as an optional fallback), **prepared, not applied**. See [section 7d](#7d-email-notifications-again-postfix-direct-delivery-to-an-ovh-redirection--prepared-not-applied).
 - Drogo is mounted twice on the host: `/mnt/dataDrogo` (read-only, owner 101000, for jellyfin) and `/mnt/dataDrogoRW` (read-write, owner 1000, for arr). Each guest's own `mpN` line decides which one it sees.
 
 ### Where we stopped / next
@@ -41,6 +42,7 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 3b. PostgreSQL `db` guest: applied. Left to do: Infisical's client address (see [section 7c](#7c-postgresql-service-db-guest--applied)).
 4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
 5. Apply the `nut_client` role (webhook file, dry run, `--tags nut`, checks: section 7b), then set the BIOS "power on after AC loss".
+5b. Apply the `postfix_relay` role and then the matchers (section 7d).
 6. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
 
 > Commands marked `# host` run in a shell on orisa (web UI Shell, console or SSH). Check your version first with `pveversion`. Proxmox VE 8 (Debian 12) and 9 (Debian 13) differ in apt source file format (see step 1).
@@ -280,8 +282,8 @@ Disk layout on a single 512 GB drive: `local` (ISOs, templates, backups) and `lo
 
 ## 7. Monitoring and notifications
 
-- [x] Datacenter > Notifications: Webhook target `discord` (POST to the Discord webhook URL, token stored as secret `token` and referenced as `{{ secrets.token }}`, header `Content-Type: application/json`, body `{"content": "**[{{ severity }}]** {{ escape title }}"}`), added to `default-matcher`. Keep the body short: Discord rejects messages over 2000 characters (HTTP 400), and backup failure logs exceed that. Other options are SMTP, Gotify and ntfy. Mail from `smartd` and cron still uses the local mailer (no relay configured).
-  - **Email is off (2026-11-21).** `default-matcher` used to list `mail-to-root` besides `discord`. That target mails root's address (`gart.algar@gmail.com`), but Postfix on orisa has no relay and cannot reach Gmail's port 25 (connection timeouts), so the mails sat in the queue and returned as "Undelivered Mail Returned to Sender" after 5 days. Proxmox forwards mail to root into its own notification system (`/root/.forward`), so each bounce reached Discord as `[unknown]` and was mailed again, a slow loop (22 mails stuck, 13 of them bounce notices). Fix: `pvesh set /cluster/notifications/matchers/default-matcher --target discord`, then `postsuper -d ALL` to empty the queue. Mail to root from other sources (cron, disk health) still goes through the forwarder, now to Discord only. If email is wanted later: a Postfix relay over port 587 (reachable from orisa) with a Gmail app password in git-secret. Not set up.
+- [x] Datacenter > Notifications: Webhook target `discord` (POST to the Discord webhook URL, token stored as secret `token` and referenced as `{{ secrets.token }}`, header `Content-Type: application/json`, body `{"content": "**[{{ severity }}]** {{ escape title }}"}`), added to `default-matcher`. Keep the body short: Discord rejects messages over 2000 characters (HTTP 400), and backup failure logs exceed that. Other options are SMTP, Gotify and ntfy. Mail from `smartd` and cron goes to root, and the forwarder turns it into a notification of type `system-mail`.
+  - **Email is off (2026-11-21), its return is prepared in section 7d.** `default-matcher` used to list `mail-to-root` besides `discord`. That target mails root's address, but Postfix on orisa could not reach Gmail's port 25 (the Freebox blocked it), so the mails sat in the queue and returned as "Undelivered Mail Returned to Sender" after 5 days. Proxmox forwards mail to root into its own notification system (`/root/.forward`), so each bounce reached Discord as `[unknown]` and was mailed again, a slow loop (22 mails stuck, 13 of them bounce notices). Fix: `pvesh set /cluster/notifications/matchers/default-matcher --target discord`, then `postsuper -d ALL` to empty the queue. Mail to root from other sources (cron, disk health) still goes through the forwarder, now to Discord only. Section 7d (role `postfix_relay`, prepared, not applied) brings email back by direct delivery to an OVH redirection address (no mailbox needed), with the loop made impossible by construction.
 - [ ] SMART: `smartctl -a /dev/nvme0` for a baseline. Proxmox runs `smartd`; set the email in `/etc/smartd.conf` or rely on notifications.
 - [x] Homarr Proxmox integration (2026-11-19): a dashboard widget showing node, containers, storage and CPU/RAM. It uses a dedicated read-only account in the built-in `pve` realm, because the docs say PAM users may not work with the API. Commands (run from the desktop, single-quote anything with `!` or bash history expansion eats it):
   - `pveum user add homarr@pve --comment 'Homarr read-only monitoring'` and `pveum acl modify / --users homarr@pve --roles PVEAuditor`
@@ -513,6 +515,116 @@ Resolved: the early certificate expiry warning and the guest time zone (see "TLS
 
 ---
 
+## 7d. Email notifications again (Postfix, direct delivery to an OVH redirection) — prepared, not applied
+Role `postfix_relay` (tag `postfix`). It is off until `postfix_relay_enabled: true`, so a normal `site.yml` run changes nothing. Steps 1 to 4 are a separate run from step 5 (the matchers). Placeholders: `<redirect-address>` is the OVH redirection address on `kornoglab.fr` that forwards to your Gmail, `<gmail-address>` is your Gmail. Neither is stored in the repo.
+### Decisions and why
+- **Default: direct delivery (`postfix_relay_mode: direct`).** Decided by the user on 2026-11-21. The OVH offer of `kornoglab.fr` is the free "Redirection" offer: there is no mailbox and therefore no SMTP login, so an authenticated relay is not possible. Postfix on orisa delivers itself on port 25 (the Freebox block was lifted) to `<redirect-address>`; OVH's MX (`mx1.mail.ovh.net`) accepts it and forwards it to Gmail. Verified live on 2026-11-21: `mx1.mail.ovh.net` answered `250 2.0.0 Ok: queued` to a test mail from orisa and Gmail delivered it (first into spam; mark it "not spam" and create a Gmail filter on the address). Gmail itself refuses direct delivery (`550-5.7.26`, no SPF or DKIM for `orisa.kornoglab.fr`), so the recipient must be the OVH address, never a Gmail address. No secret, no SASL package, no password is needed.
+- **Recipient.** The builtin target `mail-to-root` mails the email of the Proxmox user `root@pam`. Set it once, by hand (it is not stored in the repo): `ssh root@192.168.0.12 "pveum user modify root@pam --email <redirect-address>"`, or Datacenter > Permissions > Users > root > Edit > E-Mail. The role can also set it from `postfix_relay_root_email` (empty by default = untouched).
+- **Sender.** The header From stays `root@orisa.kornoglab.fr` (what the manual test used and OVH's MX accepted). Only the envelope sender (Return-Path) of local mail becomes `pve-bounce@orisa.kornoglab.fr`, a local alias to a script that only logs (see loop safety).
+- **TLS toward the MX: `smtp_tls_security_level = may`** (opportunistic). An MX is not checked against a name without DANE or MTA-STS, and nothing secret is sent. (The strongest level, `secure`, is used in the optional relay fallback, where a password is sent.)
+- **IPv4 only** (`inet_protocols = ipv4`): IPv6 attempts fail on this network and slow every delivery. It is only read at start, so the apply steps include one `systemctl restart postfix`.
+- **Unchanged:** `inet_interfaces = loopback-only`, `mynetworks = 127.0.0.0/8`, `myhostname`. orisa accepts mail only from itself, so it is not an open relay. The role checks this after each real run.
+- **Give up after 2 days** (`maximal_queue_lifetime` and `bounce_queue_lifetime`, Postfix default 5 days), variable `postfix_relay_queue_lifetime`.
+### Loop safety (why the old loop cannot come back)
+The old loop: an email failed, its bounce came back to root, `/root/.forward` turned it into a notification, and that notification was emailed again. Two independent breakers prevent it:
+1. **Postfix: bounces never reach root.** All mail created on orisa has the envelope sender `pve-bounce@orisa.kornoglab.fr`, so any bounce (immediate or after the 2-day expiry) goes to the alias `pve-bounce`, which runs `/usr/local/sbin/postfix-bounce-sink`. It writes one syslog line (tag `postfix-bounce`, subject only, addresses masked, 150 characters at most) and sends nothing. A bounce therefore never reaches `/root/.forward` or the notification system, whatever its type or severity. The queue alert posts those lines to Discord once.
+2. **Proxmox: the email matcher can never match a bounce or forwarded mail.** Mail that reaches root through the forwarder (cron, smartd, double bounces) arrives as type `system-mail` with severity `unknown`. The email matcher requires a known severity (`info`, `notice`, `warning`, `error`) AND a type other than `system-mail`. Both conditions are built into the role and cannot be configured away (it refuses `unknown` and `system-mail` in its lists).
+Forwarded local mail (cron, smartd) is therefore **not emailed**, only posted to Discord, because its body can be anything, including a bounce notice, which is exactly the old path.
+### Notification layout (after step 5)
+| Matcher | Rule | Target |
+|---|---|---|
+| `default-matcher` | always | `discord` (every notification, short alert) |
+| `email` | `{"all-of":[{"match":{"type":"severity","severities":["info","notice","warning","error"]}},{"not":{"match":{"type":"field","field":"type","values":["system-mail"]}}}]}` | `mail-to-root` |
+**Which types are emailed: all (the user's decision, 2026-11-21).** Default `postfix_relay_email_types: []` means every type (vzdump, package-updates, replication, fencing, ...) and `postfix_relay_email_severities: []` means all four known severities. Discord always receives everything. To narrow it, change one line in `ansible/group_vars/proxmox.yml` (optionally also `postfix_relay_email_severities: [warning, error]`):
+```yaml
+postfix_relay_email_types: [vzdump, fencing, replication]   # only these types
+```
+then run step 5 again. `system-mail` and `unknown` are rejected by the role.
+The matchers are managed by Ansible (`pvesh get`, compare, then `pvesh create` or `set` only when different), because a written, idempotent rule is easier to keep right than a UI click and the dry run shows what would change. It runs only with `-e postfix_relay_manage_matchers=true`. Only these two matchers (and root's email when `postfix_relay_root_email` is set) are touched. The Discord target and its token stay manual.
+### Apply and verify (direct mode, the default)
+Run from the controller (pachimari), in `ansible/`, as root over SSH like the dry runs.
+```bash
+cd /var/home/gart/depots/kornogHosted/ansible
+# 1. switch the role on (no secret file, no mailbox needed)
+echo 'postfix_relay_enabled: true' >> group_vars/proxmox.yml
+# 2. dry run, Postfix and queue alert only. Shows main.cf lines, /etc/aliases, the sender map, the two scripts, the timer.
+ansible-playbook site.yml --check --diff -e ansible_user=root --limit orisa --tags postfix
+# 3. apply, then restart Postfix once (inet_protocols is only read at start)
+ansible-playbook site.yml -e ansible_user=root --limit orisa --tags postfix
+ssh root@192.168.0.12 'systemctl restart postfix && postconf -h inet_protocols relayhost inet_interfaces sender_canonical_classes && postqueue -p | tail -1'
+# expected: ipv4, an empty line (no relayhost), loopback-only, envelope_sender, "Mail queue is empty"
+# 4. recipient of mail-to-root (once), then ONE harmless test mail, sent by you
+ssh root@192.168.0.12 "pveum user modify root@pam --email <redirect-address>"
+ssh root@192.168.0.12 "printf 'Subject: orisa mail test\n\nTest from orisa after the postfix_relay role, ignore.\n' | sendmail -i <redirect-address>"
+ssh root@192.168.0.12 'sleep 10; journalctl -t postfix/smtp -t postfix/qmgr --since -5min --no-pager'
+```
+Reading the result. **Success** in the log: `to=<...>, relay=mx1.mail.ovh.net[...]:25, ... status=sent (250 2.0.0 Ok: queued as ...)`: OVH's MX took the mail. Gmail's answer is only visible in Gmail: on success the mail arrives (look in the inbox and **spam**; "Show original" shows `SPF`, `DKIM` and `DMARC`). **Failure** shows as `status=deferred` (`Connection timed out` = port 25 blocked again; `4xx` = temporary refusal, retried) or `status=bounced` (`5xx`, refused). A bounce is not mailed to root: it is discarded by the sink and the queue alert posts one line to Discord. Gmail answers `550-5.7.26 ... unauthenticated` when a Gmail address is addressed directly: that is why the recipient is the OVH address. If Gmail files the mail in spam, check DKIM and DMARC in the original headers.
+```bash
+# 5. notification routing (separate run). The dry run prints what it would change.
+ansible-playbook site.yml --check --diff -e ansible_user=root --limit orisa --tags postfix -e postfix_relay_manage_matchers=true
+ansible-playbook site.yml -e ansible_user=root --limit orisa --tags postfix -e postfix_relay_manage_matchers=true
+ssh root@192.168.0.12 'pvesh get /cluster/notifications/matchers --output-format json'
+```
+Without Ansible, the same layout by hand (the quoted heredoc keeps the JSON intact):
+```bash
+ssh root@192.168.0.12 bash -s <<'EOF'
+pvesh set /cluster/notifications/matchers/default-matcher --target discord --comment 'All notifications go to Discord. Email only through the email matcher'
+pvesh create /cluster/notifications/matchers --name email --target mail-to-root \
+  --comment 'Email for known severities, never system-mail or unknown (no bounce loop)' \
+  --expression '{"all-of":[{"match":{"type":"severity","severities":["info","notice","warning","error"]}},{"not":{"match":{"type":"field","field":"type","values":["system-mail"]}}}]}'
+pvesh get /cluster/notifications/matchers --output-format json
+EOF
+```
+The real check is the next 02:00 backup: one Discord alert and one email. The Test button of the `mail-to-root` target (Datacenter > Notifications) sends one email straight to the target, without the matcher.
+```bash
+# 6. queue alert check (read-only)
+ssh root@192.168.0.12 'systemctl list-timers postfix-queue-alert.timer --no-pager; systemctl start postfix-queue-alert.service; journalctl -t postfix-queue-alert -t postfix-bounce -n 10 --no-pager'
+```
+### Queue alert
+`/usr/local/sbin/postfix-queue-alert`, run every 15 minutes by `postfix-queue-alert.timer`. It posts to Discord (webhook file `/etc/nut/discord.env`, URL passed to `curl` on stdin) when the oldest queued message waits longer than `postfix_relay_alert_max_age_minutes` (60) or the queue holds more than `postfix_relay_alert_max_count` (20) messages, with the delay reason of the oldest message (addresses masked). The same situation is posted again only after `postfix_relay_alert_repeat_hours` (24), a change (age, count, both) is posted at once, and "back to normal" is posted once. It also posts the discarded bounce notices (journal tag `postfix-bounce`), once each. It never fails the unit (`ExecStart=-`, every error is logged and ignored, `curl` limited to 5 s). If `/etc/nut/discord.env` is missing it only logs `no Discord webhook`.
+### Weak points
+- **Gmail may file the forwarded mail in spam.** There is no DKIM for `kornoglab.fr` signing mail from orisa and no DMARC record; the first test mail landed in spam. Use a Gmail filter on the `<redirect-address>` with "Never send it to Spam". Suggestions, not done: enable DKIM for the domain in the OVH console (recommended by OVH; it signs mail sent through OVH's servers, so it helps the relay fallback more than this path) and add a DMARC record (`_dmarc.kornoglab.fr`, none today).
+- **Silent failures after OVH accepted the mail.** OVH's own bounce goes to `pve-bounce@orisa.kornoglab.fr`, which has no public MX, so it is lost. Only a missing mail reveals it.
+- **OVH limits.** Limits of the redirection MX are not documented; a few mails per day are far below any usual threshold. If OVH refuses or greylists, mail stays `deferred` for up to 2 days and the queue alert fires. Find the cause with `postqueue -p`, then `postqueue -f` once fixed.
+- **Port 25 blocked again** (Freebox reset): `deferred ... Connection timed out`, queue alert.
+- **The redirection is a single point:** if OVH removes or changes it, mail bounces to the sink (one Discord line).
+### Rollback (direct mode)
+```bash
+# Proxmox side (back to the state of 2026-11-21: Discord only)
+ssh root@192.168.0.12 'pvesh delete /cluster/notifications/matchers/email'
+# Postfix side: remove the lines the role added and restart
+ssh root@192.168.0.12 'cp /etc/postfix/main.cf /root/main.cf.postfix_relay && postconf -X inet_protocols maximal_queue_lifetime bounce_queue_lifetime smtp_tls_security_level sender_canonical_maps sender_canonical_classes && systemctl restart postfix && postfix check'
+ssh root@192.168.0.12 'systemctl disable --now postfix-queue-alert.timer'
+```
+Then set `postfix_relay_enabled: false` again (or remove the line). The alias `pve-bounce` and the scripts can stay: they do nothing once no mail uses that sender. The root@pam email can stay, or be reset with `pveum user modify root@pam --email <old-address>`.
+### Optional fallback (off): authenticated relay (`postfix_relay_mode: relay`)
+Kept because it is small and tested. It is not part of the default path and needs a real mailbox with SMTP login, which the user does not have today. Do not enable it without one.
+- **Profiles** (`postfix_relay_profile`). `ovh`: `smtp.mail.ovh.net:465`, implicit TLS, login = the full mailbox address, the server OVH documents for MX Plan accounts (Email Pro and Exchange use other servers: set `postfix_relay_host` and `postfix_relay_port`). `gmail`: `smtp.gmail.com:587`, STARTTLS, an app password (needs 2-step verification).
+- **TLS: `secure` with `smtp_tls_secure_cert_match = nexthop`**, the strongest Postfix level, with the Debian CA bundle. Checked from orisa on 2026-11-21: the certificate on `smtp.mail.ovh.net:465` has CN `ns0.ovh.net` (Sectigo) and alternative names `ns0.ovh.net`, `smtp.mail.ovh.net`, `ssl0.ovh.net`, so the name is covered; `smtp.gmail.com` presents its own name. If a certificate loses its name, delivery stops (mail stays queued, the alert fires) instead of falling back to a weaker level.
+- **Sender.** Both providers require the From to match the account, so the envelope sender and the header From of local mail are rewritten to the mailbox address (display name kept). Bounces then arrive in that mailbox, not on orisa.
+- **Secret.** The address and the password live only in `postfix/relay.env` (git-secret, like `nut/discord.env`), created by `postfix/set-relay-secret.sh` (hidden input, mode 600). On orisa: `/etc/postfix/sasl_passwd` and its `.db`, `root:root 0600`. A real run stops with a clear message if the file is missing or incomplete; a dry run prints a warning, skips the two secret-derived files and shows everything else.
+- **Limits.** OVH documents about 200 mails per hour per account and 300 per hour per source IP. If OVH blocks the account for sending too much, its console or support mail says so, and logins are refused until it is released. Mail stays `deferred` and the queue alert fires.
+Apply steps (instead of step 1 above; the other steps are the same):
+```bash
+cd /var/home/gart/depots/kornogHosted/ansible
+# create the mailbox in the OVH customer area (Web Cloud > Emails) if it does not exist, then:
+../postfix/set-relay-secret.sh                           # hidden input, writes postfix/relay.env (600)
+git secret add postfix/relay.env && git secret hide      # then commit the .secret file
+printf 'postfix_relay_enabled: true\npostfix_relay_mode: relay\n' >> group_vars/proxmox.yml
+ansible-playbook site.yml --check --diff -e ansible_user=root --limit orisa --tags postfix
+ansible-playbook site.yml -e ansible_user=root --limit orisa --tags postfix
+ssh root@192.168.0.12 'systemctl restart postfix && postconf -h inet_protocols relayhost inet_interfaces'
+# expected: ipv4, [smtp.mail.ovh.net]:465, loopback-only. Then the test mail (step 4) to <gmail-address>.
+```
+Gmail's answer to a relayed mail: success arrives in the inbox (check spam; "Show original" shows SPF, DKIM, DMARC). Failure comes back to the mailbox as a bounce such as `550-5.7.26 ... unauthenticated` (no SPF or DKIM) or `5.7.1 ... DMARC`. Problems before OVH show in the log: `SASL authentication failed` (wrong login or password, the mail stays queued), `certificate verification failed`, `Connection timed out`.
+Rollback of the relay mode: the direct-mode rollback above, plus these keys and files, then remove the two lines from `group_vars/proxmox.yml`:
+```bash
+ssh root@192.168.0.12 'postconf -X relayhost smtp_sasl_auth_enable smtp_sasl_password_maps smtp_sasl_security_options smtp_sasl_tls_security_options smtp_tls_secure_cert_match smtp_tls_wrappermode smtp_tls_CAfile smtp_tls_mandatory_protocols smtp_tls_loglevel && rm -f /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db && systemctl restart postfix'
+```
+Switching from relay to direct: set `postfix_relay_mode: direct` (or remove the line) and apply again; the role removes the SASL and relay keys itself.
+### Tested (2026-11-21, throwaway Debian 13 container without network, since removed)
+Postfix 3.10.13, a Python `aiosmtpd` stub as the MX or relay, a test CA, stand-ins for `curl` and `journalctl`. The container runs with `--network none` (only `lo`) and every provider and MX name (`smtp.mail.ovh.net`, `ssl0.ovh.net`, `smtp.gmail.com`, `mx1.mail.ovh.net`, `mx.test`) is mapped to the stub in `/etc/hosts`, so nothing can reach the Internet. Covered: direct apply without any secret file, idempotence, delivery (envelope `pve-bounce@...`, header From kept), 550 and 451 behavior, bounce routing to the sink (nothing in root's mailbox), the queue alert with de-duplication and recovery, hostile input in the sink and the helper script, relay mode with login, wrong password, wrong-name and self-signed certificates, IPv4 only, file modes, switching modes. Details: `.agents/tasks/postfix-relay/report.md`. **Not tested:** real delivery through OVH's MX to Gmail via the role, real OVH or Gmail login, the matcher change on the real host, OVH's limits, and Proxmox's own evaluation of the expression (checked against the documented semantics only).
+---
 ## 8. Guests for the `parr` stack
 
 ### Layout: one guest per service or grouped?

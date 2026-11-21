@@ -1,0 +1,163 @@
+#!/usr/bin/python3
+# {{ ansible_managed }}
+# Posts to Discord when the Postfix queue is old or long. Runs from a timer as root.
+# Same message again only when the situation changes or after the repeat time.
+# Never fails and never blocks: short timeouts, every error is logged and ignored.
+import json
+import os
+import re
+import socket
+import subprocess
+import syslog
+import time
+
+MAX_AGE = {{ postfix_relay_alert_max_age_minutes | int }} * 60
+MAX_COUNT = {{ postfix_relay_alert_max_count | int }}
+REPEAT = {{ postfix_relay_alert_repeat_hours | int }} * 3600
+STATE_DIR = "{{ postfix_relay_alert_state_dir }}"
+STATE = os.path.join(STATE_DIR, "state.json")
+ENV_FILE = "{{ postfix_relay_alert_discord_env }}"
+CURL = "{{ postfix_relay_alert_curl }}"
+JOURNALCTL = "{{ postfix_relay_alert_journalctl }}"
+CURSOR = os.path.join(STATE_DIR, "bounce.cursor")
+CURL_TIMEOUT = {{ postfix_relay_alert_curl_timeout | int }}
+os.environ["PATH"] = "/usr/sbin:/usr/bin:/sbin:/bin"
+os.umask(0o077)
+
+
+def log(text):
+    syslog.openlog("postfix-queue-alert")
+    syslog.syslog(syslog.LOG_NOTICE, text)
+
+
+def clean(text, limit):
+    # Data from the queue is untrusted: printable ASCII only, addresses masked, short.
+    text = re.sub(r"[^\x20-\x7e]", " ", str(text))
+    text = re.sub(r"\S+@\S+", "<address>", text)
+    return " ".join(text.split())[:limit]
+
+
+def read_queue():
+    out = subprocess.run(["postqueue", "-j"], capture_output=True, text=True,
+                         errors="replace", timeout=20, check=False).stdout
+    msgs = []
+    for line in out.splitlines():
+        try:
+            m = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(m, dict) and isinstance(m.get("arrival_time"), int):
+            msgs.append(m)
+    return msgs
+
+
+def webhook():
+    try:
+        with open(ENV_FILE, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("DISCORD_WEBHOOK_URL="):
+                    url = line.split("=", 1)[1].strip().strip("\"'")
+                    if re.fullmatch(r"https://[^\s\"\\]+", url):
+                        return url
+    except OSError:
+        pass
+    return None
+
+
+def send(text):
+    url = webhook()
+    if not url:
+        log("no Discord webhook in %s, alert not sent" % ENV_FILE)
+        return False
+    payload = json.dumps({"content": text[:1900], "allowed_mentions": {"parse": []}})
+    try:
+        # The URL goes through stdin so it does not show in the process list.
+        res = subprocess.run(
+            [CURL, "--silent", "--show-error", "--fail", "--output", "/dev/null",
+             "--connect-timeout", "3", "--max-time", str(CURL_TIMEOUT),
+             "--header", "Content-Type: application/json",
+             "--data-binary", payload, "--config", "-"],
+            input='url = "%s"\n' % url, text=True, capture_output=True,
+            timeout=CURL_TIMEOUT + 5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        log("Discord alert failed (ignored)")
+        return False
+    if res.returncode != 0:
+        log("Discord alert failed (ignored)")
+        return False
+    return True
+
+
+def load_state():
+    try:
+        with open(STATE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(data):
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    tmp = STATE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+    os.replace(tmp, STATE)
+
+
+def report_bounces():
+    # Bounce notices of our own mail are discarded by postfix-bounce-sink (one log line each).
+    # They are posted here, once, and never go through the Proxmox notification system.
+    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+    out = subprocess.run([JOURNALCTL, "-t", "postfix-bounce", "-o", "cat", "--no-pager", "-n", "20",
+                          "--cursor-file", CURSOR],
+                         capture_output=True, text=True, errors="replace", timeout=20, check=False).stdout
+    lines = [clean(x, 150) for x in out.splitlines() if x.strip()]
+    if lines:
+        host = socket.gethostname().split(".")[0]
+        send("%s: %d mail(s) sent from this host came back as bounce notices (discarded, not re-mailed): %s"
+             % (host, len(lines), " | ".join(lines[:5])))
+
+
+def main():
+    now = int(time.time())
+    msgs = read_queue()
+    count = len(msgs)
+    oldest = min(msgs, key=lambda m: m["arrival_time"]) if msgs else None
+    age = now - oldest["arrival_time"] if oldest else 0
+    flags = []
+    if age > MAX_AGE:
+        flags.append("age")
+    if count > MAX_COUNT:
+        flags.append("count")
+    host = socket.gethostname().split(".")[0]
+    state = load_state()
+    if flags:
+        key = "+".join(flags)
+        last = state.get("sent", 0) if isinstance(state.get("sent"), int) else 0
+        if state.get("key") != key or now - last >= REPEAT:
+            reason = ""
+            for rcpt in (oldest or {}).get("recipients", []):
+                if isinstance(rcpt, dict) and rcpt.get("delay_reason"):
+                    reason = clean(rcpt["delay_reason"], 200)
+                    break
+            text = "%s: mail queue has %d message(s), the oldest waits %d min (limits: %d min, %d messages)." % (
+                host, count, age // 60, MAX_AGE // 60, MAX_COUNT)
+            if reason:
+                text += " Reason: " + reason
+            if send(text):
+                save_state({"key": key, "sent": now})
+    elif state.get("key"):
+        if send("%s: mail queue is back to normal (%d message(s))." % (host, count)):
+            save_state({})
+
+
+try:
+    report_bounces()
+except Exception as exc:  # noqa: BLE001
+    log("bounce report error ignored: %s" % clean(exc, 200))
+try:
+    main()
+except Exception as exc:  # noqa: BLE001 - this script must never fail the system
+    log("error ignored: %s" % clean(exc, 200))
+raise SystemExit(0)
