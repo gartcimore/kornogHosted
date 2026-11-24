@@ -305,12 +305,41 @@ Status: **applied 2026-11-18.** The Ansible role `nut_client` ([`../ansible/role
 ### What was decided and why
 
 - orisa, ymir and drogo hang on the UniFi UPS 2U (`192.168.0.138`, NUT server, UPS name `ups`). orisa is behind a power strip, not plugged into the UPS directly, and it is not in the UPS "Safe Shutdown Pairing". The UPS "Power Cycle on Restore" does not apply to it.
-- **orisa shuts down at the same moment as the NAS units.** UniFi starts the safe shutdown when the remaining battery runtime reaches 5 minutes, and ymir and drogo follow that as Synology network-UPS clients ("Same as server"). orisa uses NUT's own low-battery handling: `upsmon` shuts the host down when the UPS reports `LB` (low battery), or `FSD` if it ever occurs. There is no timer, no percentage rule and no `upssched`.
+- **orisa shuts down at the same moment as the NAS units.** UniFi starts the safe shutdown when the remaining battery runtime reaches 5 minutes, and ymir and drogo follow that as Synology network-UPS clients ("Same as server"). orisa uses NUT's own low-battery handling: `upsmon` shuts the host down when the UPS reports `LB` (low battery) while on battery, or `FSD`. There is no timer and no percentage rule. A lost connection is the third case, handled by the wrapper below.
 - orisa is a **secondary** client (`MODE=netclient`, `MINSUPPLIES 1`). It only shuts itself down. It never tells the UPS to cut power.
-- `SHUTDOWNCMD` is `/sbin/shutdown -h +0`, so it goes through systemd. Proxmox then stops the guests in reverse start order (123 `arr`, 122 `jellyfin`, 121 `rproxy`) before the mounts go away. The guests stop first, so nothing writes to the NFS mount when ymir disappears. This relies on the existing `10-nfs.conf` drop-in (guests start after the NFS mount, so they stop before it).
+- `SHUTDOWNCMD` is the wrapper `/usr/local/sbin/nut-shutdown`, which ends in `/sbin/shutdown -h +0`, so the shutdown goes through systemd. Proxmox then stops the guests in reverse start order (123 `arr`, 122 `jellyfin`, 121 `rproxy`) before the mounts go away. The guests stop first, so nothing writes to the NFS mount when ymir disappears. This relies on the `10-nas-mounts.conf` drop-in (guests start after the NAS mounts, so they stop before them).
 - Timing: the last clean shutdown of orisa took about 107 s (2026-11-18, guests 43 s of that). UniFi's trigger leaves 5 minutes of estimated runtime, so there is roughly 3 times the time needed. The runtime figure is not reliable, though: the UPS reports a load of 0 W although the three machines hang on it.
 - **Alerts to Discord** come from `upsmon` (`NOTIFYCMD`) for ONBATT, ONLINE, LOWBATT, FSD, COMMBAD, COMMOK and SHUTDOWN. Each message names the event and gives the battery percentage and the runtime in minutes, read with `upsc` at that moment (shown as `unknown` if the UPS cannot be read). The same line goes to syslog (`logger -t nut-notify`). The script uses short timeouts (3 s for `upsc`, 5 s for `curl`) and ignores failures, so it cannot hold up a shutdown. It builds the JSON with `python3`, accepts only known event names, and disables Discord mentions.
 - The webhook URL is a secret. It is kept in `nut/discord.env` (git-secret, same convention as `arr/.env`) and installed as `/etc/nut/discord.env`, mode 0640, owner `root:nut` (`upsmon` runs the notify script as the `nut` user). The role stops with a clear message if `nut/discord.env` is missing or has no URL.
+
+### Lost contact with the UPS (2026-11-24 outage)
+**What happened.** Both bond links were down for 74 s during a switch update. 41 s after they came back, one poll of the UPS failed and `upsmon` shut orisa down, with the UPS online at 100 %. The log said `UPS ... was last known to be calibrating and currently is not communicating, assuming dead`. The status `CAL` came from the UPS self-test of 2026-11-19 and `upsmon` never saw it clear.
+
+**What NUT does.** The earlier text of this section (shutdown only on `LB` or `FSD`) was wrong. In `upsmon`, a UPS it cannot reach counts as critical at once when its last known state was calibrating (CAL), on bypass, off, or not fully online. This is `is_ups_critical()` in `clients/upsmon.c`. The poll failure drops the connection and sets the communication state to lost on the first failure. `DEADTIME` does not apply to this rule (it only promotes a UPS last seen on battery to low battery), so raising it does not help. `upsmon.conf` has no option to turn the rule off. The `upsmon.conf(5)` text on `DEADTIME` says the same for the on-battery case: "A dead UPS that was last known to be on battery is assumed to have changed to a low battery condition."
+
+**Choice: a `SHUTDOWNCMD` wrapper that re-checks, plus `Restart=always`.** `upsmon` always runs `SHUTDOWNCMD` when it declares a critical state, and only a wrapper can look at the UPS at that moment. Alternatives:
+- `upssched` (timers on `NOTIFYCMD` events) only adds actions on events. It cannot cancel the shutdown that `upsmon` has already decided on, so it does not fix this. Not chosen.
+- A longer `DEADTIME`: no effect on the CAL rule (above).
+- Replacing `upsmon` with a script: loses the NUT handling of FSD and the NAS sequence. Not chosen.
+
+`/usr/local/sbin/nut-shutdown` (role `nut_client`) decides:
+
+| UPS answers `upsc ups@... ups.status`? | Decision |
+|---|---|
+| yes, `FSD`, or `OB` and `LB` together | shut down now (Discord `SHUTDOWN` message first) |
+| yes, anything else (`OL`, `OL CAL`, `OB` alone) | no shutdown, Discord `SHUTDOWN_SKIPPED` |
+| no, last seen online or never seen on battery | no shutdown, Discord `SHUTDOWN_SKIPPED` (this was the 2026-11-24 case) |
+| no, last seen on battery | wait up to `nut_client_comm_lost_grace` (120 s), polling every 10 s. Shut down if it never answers. If it answers, apply the first two rows |
+
+"Last seen on battery" comes from `nut-notify`, which writes `onbatt` (events ONBATT, LOWBATT) or `online` (ONLINE) and a timestamp to `/run/nut/ups-last-state`. It is a tmpfs, so after a boot the state is empty, treated as online, as `upsmon` does.
+
+`upsmon` exits after it has called `SHUTDOWNCMD` (`doshutdown()` is `noreturn`), also when the wrapper did not shut down. The packaged `nut-monitor.service` has `Restart=on-failure`, which does not restart a clean exit, so nothing would watch the UPS any more. The drop-in `/etc/systemd/system/nut-monitor.service.d/10-restart.conf` sets `Restart=always`, `RestartSec=5`. `upsmon` then starts with no remembered state, which also clears a stale CAL. During a real shutdown systemd refuses the restart.
+
+Timing budget when the UPS was last seen on battery: UniFi starts its shutdown at 300 s of remaining runtime, so contact lost on battery still leaves at least 300 s. Up to 15 s DEADTIME, 120 s of waiting and about 110 s of clean shutdown add up to about 250 s, which fits with margin. Do not raise `nut_client_comm_lost_grace` above about 160.
+
+`SHUTDOWN` in `NOTIFYFLAG` is now `SYSLOG` only. `upsmon` sends it before the wrapper decides, so a Discord message from it would announce a shutdown that the wrapper may cancel. The wrapper sends the Discord messages itself (`SHUTDOWN` when it really shuts down, `SHUTDOWN_SKIPPED` when it does not). `COMMBAD` and `COMMOK` still go to Discord, so a lost UPS is always reported.
+
+Limits: with the UPS last seen online, a power cut that happens while the UPS is unreachable is not seen by orisa (the NAS units are in the same position). The NUT version on orisa is 2.8.1, the code read is 2.8.2 (the CAL rule is the same in the log text of 2.8.1). Documentation used: `upsmon.conf(5)` (<https://networkupstools.org/docs/man/upsmon.conf.html>: `SHUTDOWNCMD`, `DEADTIME`, `FINALDELAY`, `NOTIFYFLAG`), `upsmon(8)` (<https://networkupstools.org/docs/man/upsmon.html>), `upssched.conf(5)`, and `clients/upsmon.c` (<https://github.com/networkupstools/nut/blob/master/clients/upsmon.c>, `is_ups_critical`, `recalc`, `doshutdown`). Restart behaviour: `systemd.service(5)`, `Restart=`.
 
 ### Reading the battery by hand
 
@@ -357,6 +386,21 @@ journalctl -t nut-notify -n 5 --no-pager      # the same line, from syslog
 
 Expect the Discord message `orisa: UPS ONLINE - TEST from orisa, ignore | battery 100 %, runtime 72 min` (values will differ). If the Discord message is missing, `journalctl -t nut-notify` says whether the webhook file was unreadable or `curl` failed.
 
+Apply only the NUT change (after the first install this restarts `nut-monitor` once, which also clears a stale CAL; check first that the UPS reads `OL`):
+```bash
+cd ansible
+ansible-playbook site.yml --check --diff --limit orisa --tags nut -K
+ansible-playbook site.yml --limit orisa --tags nut -K
+# host, read only
+systemctl show nut-monitor -p Restart,RestartUSec; grep -E '^(SHUTDOWNCMD|NOTIFYFLAG SHUTDOWN)' /etc/nut/upsmon.conf
+journalctl -u nut-monitor -b --no-pager | tail
+# the wrapper with the UPS reachable and online: sends a Discord message SHUTDOWN_SKIPPED, shuts nothing down
+# (run only the first branch; the UPS answers OL, so the wrapper cannot shut down)
+upsc ups@192.168.0.138 ups.status      # must print OL before you run the next line
+sudo /usr/local/sbin/nut-shutdown; echo rc=$?; journalctl -t nut-shutdown -n 3 --no-pager
+```
+Do not run the wrapper while the UPS is on battery or reports FSD: it would shut orisa down.
+Rollback (back to the 2026-11-18 behaviour, which shuts down on any lost contact after CAL): in `ansible/roles/nut_client/templates/upsmon.conf.j2` set `SHUTDOWNCMD "{{ nut_client_shutdowncmd }}"` and `NOTIFYFLAG SHUTDOWN SYSLOG+EXEC`, apply with `--tags nut`, then on orisa `sudo rm /etc/systemd/system/nut-monitor.service.d/10-restart.conf /usr/local/sbin/nut-shutdown && sudo systemctl daemon-reload && sudo systemctl restart nut-monitor`. A `git revert` of the change does the first part, since it restores the old templates.
 ### If the UPS login is refused
 
 The server has "Login Credential" off, so it should not check anything. That is not verified for `upsmon` logins. The role uses the Synology client defaults `monuser` / `secret` (not real secrets). The first start decides: `journalctl -u nut-monitor` either shows the UPS as being monitored and `on line`, or an access-denied or login-failed line, and then `upsmon` retries without shutting anything down. To change the pair, set `nut_client_user` and `nut_client_password` (for example in `ansible/group_vars/proxmox.yml`) and apply again. The role restarts `nut-monitor` when `upsmon.conf` changes. The login that ymir and drogo use is shown in DSM (Control Panel > Hardware & Power > UPS), which can be used to copy their values.
@@ -368,7 +412,7 @@ The server has "Login Credential" off, so it should not check anything. That is 
 - **Client limit.** Community posts report that the UniFi UPS's NUT server accepts at most 3 clients (threads on community.ui.com; Ubiquiti documents no number). Checked 2026-11-18: with orisa connected as the third client (ymir, drogo, orisa), both NAS units still show the UPS in DSM (Hardware & Power > UPS > Device Information), and short `upsc` reads from orisa still answer on top of the three. A fourth **persistent** client (Home Assistant NUT integration, PeaNUT) was not tried: one report says the server can stop answering when over the limit, which would hurt the NAS shutdowns. Do not add one without a plan (a NUT proxy on orisa with `dummy-ups` in repeater mode could serve more readers, at the price of one more component in the shutdown path). The UPS refuses `LIST CLIENT`, so the client count cannot be read.
 - **UPS firmware.** UniFi UPS release 1.6.9 fixed the NUT server not reporting `FSD` to clients when safe shutdown was armed on battery. Checked 2026-11-18: the UPS reports its firmware as up to date in UniFi (version number not recorded). Re-check after UniFi updates.
 - The UPS runtime estimate is not trustworthy (load reported as 0). The 5-minute trigger is UniFi's, not orisa's.
-- A real power cut test has not been done, and should not be done just to test (see below).
+- A real power cut test has not been done, and should not be done just to test (see below). The wrapper was tested with a fake `upsc`, `shutdown` and `nut-notify` on the desktop (every row of the table above), not on orisa.
 - The notify script was tested on the desktop with stub `curl` and `upsc` only. It has not run on orisa or sent a message to the real Discord webhook.
 
 ### What must never be run as a "test"
@@ -652,6 +696,29 @@ To see a real message, lower the threshold for one run: `ansible-playbook site.y
 ### Tested (2026-11-21, local, fake `df`, `pct`, `lvs` and `curl`, no webhook contacted)
 Under threshold (silent), crossing (one message with the item), repeat suppressed, a second item crossing (new message), hysteresis band (silent), recovery message, repeat after 24 h, Discord failure (exit 0, state not saved, retried), missing webhook file (exit 0, logged), unreadable `df` output (exit 0).
 
+## 7f. Boot alert (role `boot_alert`) — prepared, not applied
+### What it does and why
+On 2026-11-24 orisa was off for 7 h 35 min before anyone noticed. `boot-alert.service` (tag `bootalert`) runs once per boot, after `network-online.target`, and posts one Discord message, for example:
+`orisa started at 2026-11-24 20:37:10 CET. Previous shutdown: clean at 2026-11-24 13:02:50 CET (off for 7 h 34 min), started by the UPS monitor (NUT).`
+or `... Previous shutdown: NOT clean, last log entry <time> (off for ...), power loss or crash.`
+- The start time is computed from `/proc/uptime`. The previous boot comes from the journal (`journalctl --boot=-1`): the last entry is the stop time, `Journal stopped` or `Reached target poweroff.target` (or reboot, halt) near the end means a clean shutdown, and a `power-fail shutdown` line from `nut-monitor` or a `nut-shutdown` line means the UPS monitor started it. The journal must be persistent (it is on orisa: `journalctl --list-boots` shows several boots).
+- The same conventions as `disk_alert`: webhook from `/etc/nut/discord.env` (installed by `nut_client`), URL to `curl` on stdin, no mentions, text cut at 1900 characters, `ExecStart=-` so a failure never marks the system degraded, every error logged under `boot-alert` and ignored.
+- `network-online.target` comes before the LACP partner answers, so the message is retried every 10 s for up to 180 s (`boot_alert_wait`). Nothing is stored or retried after that.
+- The role enables the unit but does not start it. Starting it at apply time would post a message about a boot that happened long ago.
+### Apply and verify
+```bash
+cd ansible
+ansible-playbook site.yml --check --diff --limit orisa --tags bootalert -K
+ansible-playbook site.yml --limit orisa --tags bootalert -K
+# host
+systemctl is-enabled boot-alert.service        # enabled
+sudo systemctl start boot-alert.service        # sends ONE real message now, with the real boot data (optional check)
+journalctl -t boot-alert -n 5 --no-pager
+```
+Rollback: `sudo systemctl disable boot-alert.service && sudo rm /etc/systemd/system/boot-alert.service /usr/local/sbin/boot-alert && sudo systemctl daemon-reload`, and remove the role from `site.yml` (or set `boot_alert_enabled: false`, which only skips the role and leaves the files).
+### Tested (local, fake `journalctl` and `curl`, no webhook contacted)
+Clean shutdown started by NUT, unclean shutdown, no previous boot in the journal, `curl` failing twice then succeeding (3 attempts), `curl` always failing (stops after the wait, exit 0), missing webhook file (no `curl` call, exit 0), `journalctl` missing (message still sent). The `journalctl` commands and the matching patterns were also run read-only on orisa against the 2026-11-24 shutdown (`Journal stopped`, `Reached target poweroff.target`, `power-fail shutdown` all match).
+---
 ## 8. Guests for the `parr` stack
 
 ### Layout: one guest per service or grouped?
@@ -787,7 +854,7 @@ showmount -e 192.168.0.54        # check the export is visible (NFSv3 query)
 
 `/etc/fstab`, same options as heimdall (README), with the `x-systemd.automount`-less permanent mount that your `parr` stack requires:
 ```
-192.168.0.54:/volume1/data /mnt/dataYmir nfs rw,hard,nofail,_netdev,retry=5,x-systemd.mount-timeout=30,x-systemd.device-timeout=30,vers=3,sec=sys 0 0
+192.168.0.54:/volume1/data /mnt/dataYmir nfs rw,hard,nofail,_netdev,retry=5,x-systemd.requires=nas-wait.service,x-systemd.mount-timeout=30,x-systemd.device-timeout=30,vers=3,sec=sys 0 0
 ```
 ```bash
 systemctl daemon-reload
@@ -809,15 +876,39 @@ Keep the **same path inside every guest** (`/mnt/dataYmir`), so compose files (`
 
 Mount read-only where write is not needed. Jellyfin only reads media: `mp0: /mnt/dataYmir,mp=/mnt/dataYmir,ro=1`. Its config stays on the guest disk.
 
-Mount-ordering: start NFS-dependent guests after the host has mounted the share, which `_netdev` handles at boot, and give them a start delay as a safety net (guest Options > Start/Shutdown order, e.g. `rproxy` order 1, `arr` and `jellyfin` order 2 with a 30 s delay). Start ordering: by default `pve-guests.service` has no dependency on the NFS mount (`systemd-analyze critical-chain pve-guests.service` shows none), so a guest can start before `/mnt/dataYmir` is ready. Fix, applied on orisa:
-```
-# /etc/systemd/system/pve-guests.service.d/10-nfs.conf
-[Unit]
-Wants=mnt-dataYmir.mount
-After=remote-fs.target mnt-dataYmir.mount
-```
-then `systemctl daemon-reload`. `Wants=` is deliberate (not `RequiresMountsFor=`): a NAS outage then delays guests but does not stop all of them from starting. After the next reboot, `systemd-analyze critical-chain pve-guests.service` should show `mnt-dataYmir.mount`.
+Mount-ordering: see "Boot order" just below. The earlier fix (a drop-in with `Wants=mnt-dataYmir.mount`) was not enough on 2026-11-24.
+#### Boot order (rewritten after the 2026-11-24 outage; role `proxmox_host`, tag `mounts`; prepared, not applied)
+**What went wrong.** At the boot after the outage `network-online.target` was reached while the LACP bond had no working partner yet. `/mnt/dataDrogo` and `/mnt/dataDrogoRW` failed (`mount error(113): could not connect`), `/mnt/dataYmir` timed out after 30 s. All three are `nofail`, so `pve-guests.service` went on (`Wants=` does not wait for a mount that failed). CT 121, 122 and 126 did not start (their `mp0`/`mp1` host path was missing) and CT 123 started on empty directories, so `arr.service` failed. Nothing retried the mounts. The `ymir-backup` storage is mounted by Proxmox itself (`pvestatd`, not `/etc/fstab`), which retries by itself every few seconds, so it needs no change. Where things are defined: the three mounts are in `/etc/fstab`, written by the role from `nfs_data` and `cifs_mounts` in `ansible/group_vars/proxmox.yml`.
 
+**What the role sets up now:**
+1. `nas-wait.service` (script `/usr/local/sbin/nas-wait`): waits until each NAS accepts a TCP connection (NFS 2049 on ymir, SMB 445 on drogo), at most `proxmox_host_nas_wait_timeout` (120 s), then ends with success in every case. Each fstab line has `x-systemd.requires=nas-wait.service`, so the mounts run after it (`systemd.mount(5)`: `x-systemd.requires=` adds `Requires=` and `After=`). On 2026-11-24 the UPS first answered about 40 s after boot. A TCP answer proves the network path to the NAS works, which `network-online.target` does not. If a NAS stays down, the boot waits 120 s once and continues.
+2. The fstab options keep `nofail` and `_netdev`, and now every mount has `x-systemd.mount-timeout=30` (the SMB mounts had the 90 s default). A missing NAS cannot hold the boot beyond that.
+3. `pve-guests.service` gets the drop-in `10-nas-mounts.conf` (replaces `10-nfs.conf`): `Wants=` and `After=` for the three mount units, and `ExecStartPre=/usr/local/sbin/pve-wait-mounts`. That script checks the three mount points, runs `mount` on the missing ones every 15 s, and ends with success as soon as all are present. After 600 s without success it ends with an error and posts one Discord message ("NAS mounts still missing ... The guests are NOT started").
+4. `Restart=on-failure`, `RestartSec=60` and `StartLimitIntervalSec=0` in the same drop-in: after a failed gate, systemd runs `pve-guests` again every 60 s, so the guests start by themselves once the NAS is back. When that happens a second message says so. `Restart=on-failure` is allowed for `Type=oneshot` since systemd 244 (`systemd.service(5)`); Proxmox 9 ships systemd 257.
+
+**Why this and not the alternatives.**
+- `RequiresMountsFor=` or `Requires=` on the mounts: a failed mount makes `pve-guests` fail at once with "dependency" and nothing starts it again, so one NAS hiccup at boot means no guest until someone runs `pct start`. The gate script waits and retries instead.
+- `x-systemd.automount`: retries on access, but the guide says mounts are permanent on purpose (an idle unmount under a bind mount desyncs the guest).
+- Per-guest start order or delays (`startup: order=...,up=30`): a time guess, and it does not know whether the mount is there.
+- Starting only the guests that do not need the NAS: needs a per-guest list that drifts. All guests wait together, the cost being that `rproxy` (121) is also late during a NAS outage. If that matters later, make the gate part of a per-guest hook.
+
+**What happens when a NAS is missing at boot.** The host boots and answers SSH and the web UI (`sshd` and `pveproxy` do not wait for `pve-guests`). `nas-wait` costs 120 s, mounts fail within 30 s each, the gate retries for 10 minutes, posts to Discord, and keeps trying every 60 s. No guest runs on an empty directory. To start guests by hand without the NAS: `sudo pct start <id>` (the bind mounts of that guest must be handled by you; `chattr +i` on the empty mount points makes writes fail rather than fill the SSD).
+
+**Apply and verify.**
+```bash
+cd ansible
+ansible-playbook site.yml --check --diff --limit orisa --tags mounts -K
+ansible-playbook site.yml --limit orisa --tags mounts -K
+# host, read only
+grep -E 'dataYmir|dataDrogo' /etc/fstab
+systemctl cat pve-guests.service | sed -n '/10-nas-mounts/,$p'
+systemd-analyze verify pve-guests.service nas-wait.service
+findmnt /mnt/dataYmir /mnt/dataDrogo /mnt/dataDrogoRW
+```
+`ansible.posix.mount` runs `mount -o remount` on the live mounts when the options change, with the guests running. The only options added are `x-systemd.*`, which `mount` handles in user space and does not pass to the kernel. This is not verified on orisa: run `findmnt` and look at a guest afterwards, and read the dry run first. The proof is the next reboot, at a time you choose: `systemd-analyze critical-chain pve-guests.service` shows `nas-wait.service` and the three mounts, `journalctl -b -t nas-wait -t pve-wait-mounts` shows the waits, and `pct list` shows the guests running with their media.
+A rehearsal of the boot race itself is not possible without a reboot. Tested on the desktop with fake `mount`, `mountpoint`, `curl` and a local listener (no real NAS or webhook): all mounts present (no mount call), one missing then mounted, never mountable (exit 1 after the timeout, one message, no second message on the next try, a recovery message afterwards), missing webhook (logged, no failure), `nas-wait` with one port answering and one not (gives up after the timeout, exit 0).
+
+**Rollback.** `git revert` the change, apply `--tags mounts`, then on orisa `sudo rm /etc/systemd/system/pve-guests.service.d/10-nas-mounts.conf /etc/systemd/system/nas-wait.service /usr/local/sbin/nas-wait /usr/local/sbin/pve-wait-mounts && sudo systemctl daemon-reload`. The old `10-nfs.conf` is back in git history (`Wants=mnt-dataYmir.mount`, `After=remote-fs.target mnt-dataYmir.mount`).
 Proxmox does not include bind mounts (host-path `mp` entries) in vzdump backups, so the NAS data is not copied into guest backups. Verify with one backup's size.
 
 ### 9.4 UID/GID mapping

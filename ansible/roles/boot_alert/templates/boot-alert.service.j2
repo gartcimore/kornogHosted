@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Post a Discord message when the host has booted
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# The leading "-" ignores a failure: this message must never mark the system degraded.
+ExecStart=-{{ boot_alert_script }}
+TimeoutStartSec={{ (boot_alert_wait | int) + 60 }}
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

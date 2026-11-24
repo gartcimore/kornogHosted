@@ -24,37 +24,6 @@
     validate: /usr/sbin/sshd -t -f %s
   notify: Reload sshd
 
-# --- NFS data share from Ymir ------------------------------------------------
-- name: Is the data share mounted
-  ansible.builtin.command: findmnt --noheadings {{ nfs_data.path | quote }}
-  register: proxmox_host_nfs_mounted
-  changed_when: false
-  failed_when: false
-  check_mode: false
-
-# No mode/owner here: when mounted, this path is the NFS share root and its
-# permissions must not be touched.
-- name: Mount point exists  # noqa: risky-file-permissions
-  ansible.builtin.file:
-    path: "{{ nfs_data.path }}"
-    state: directory
-
-# Immutable underneath the mount, so a missing mount makes writes fail instead
-# of filling the local disk. Only possible while the share is not mounted.
-- name: Mark the empty mount point immutable  # noqa: risky-file-permissions
-  ansible.builtin.file:
-    path: "{{ nfs_data.path }}"
-    attributes: "+i"
-  when: proxmox_host_nfs_mounted.rc != 0
-
-- name: Data share in fstab and mounted
-  ansible.posix.mount:
-    src: "{{ nfs_data.src }}"
-    path: "{{ nfs_data.path }}"
-    fstype: nfs
-    opts: "{{ nfs_data.opts }}"
-    state: mounted
-
 # --- WireGuard for gluetun (arr guest) ------------------------------------------------
 # A guest cannot load kernel modules, the host has to. Without this, gluetun only
 # works after a manual `modprobe wireguard`.
@@ -77,89 +46,153 @@
     - /etc/subuid
     - /etc/subgid
 
-# --- SMB shares (drogo) ------------------------------------------------------------
-- name: Read SMB credentials file status
-  ansible.builtin.stat:
-    path: "{{ item.credentials }}"
-    get_checksum: false
-    get_mime: false
-  loop: "{{ cifs_mounts | default([]) }}"
-  loop_control:
-    label: "{{ item.credentials }}"
-  register: proxmox_host_cifs_creds
+# --- NAS mounts (tag mounts): NFS from ymir, SMB from drogo, guests start after them ----
+# One block so `--tags mounts` applies the whole boot-order setup alone. Guide section 9.
+- name: NAS mounts and boot order
+  tags: [mounts]
+  block:
+    # --- NFS data share from Ymir ------------------------------------------------
+    - name: Is the data share mounted
+      ansible.builtin.command: findmnt --noheadings {{ nfs_data.path | quote }}
+      register: proxmox_host_nfs_mounted
+      changed_when: false
+      failed_when: false
+      check_mode: false
 
-- name: SMB credentials file exists and is private
-  ansible.builtin.assert:
-    that:
-      - item.stat.exists
-      - item.stat.mode == '0600'
-      - item.stat.pw_name == 'root'
-    fail_msg: >-
-      {{ item.item.credentials }} must exist on {{ inventory_hostname }}, owned by root
-      with mode 0600 (username= and password= lines). It is not stored in git.
-  loop: "{{ proxmox_host_cifs_creds.results }}"
-  loop_control:
-    label: "{{ item.item.credentials }}"
+    # No mode/owner here: when mounted, this path is the NFS share root and its
+    # permissions must not be touched.
+    - name: Mount point exists  # noqa: risky-file-permissions
+      ansible.builtin.file:
+        path: "{{ nfs_data.path }}"
+        state: directory
 
-- name: Is each SMB share mounted
-  ansible.builtin.command: findmnt --noheadings {{ item.path | quote }}
-  loop: "{{ cifs_mounts | default([]) }}"
-  loop_control:
-    label: "{{ item.path }}"
-  register: proxmox_host_cifs_mounted
-  changed_when: false
-  failed_when: false
-  check_mode: false
+    # Immutable underneath the mount, so a missing mount makes writes fail instead
+    # of filling the local disk. Only possible while the share is not mounted.
+    - name: Mark the empty mount point immutable  # noqa: risky-file-permissions
+      ansible.builtin.file:
+        path: "{{ nfs_data.path }}"
+        attributes: "+i"
+      when: proxmox_host_nfs_mounted.rc != 0
 
-- name: SMB mount points exist  # noqa: risky-file-permissions
-  ansible.builtin.file:
-    path: "{{ item.path }}"
-    state: directory
-  loop: "{{ cifs_mounts | default([]) }}"
-  loop_control:
-    label: "{{ item.path }}"
+    - name: Data share in fstab and mounted
+      ansible.posix.mount:
+        src: "{{ nfs_data.src }}"
+        path: "{{ nfs_data.path }}"
+        fstype: nfs
+        opts: "{{ nfs_data.opts }}"
+        state: mounted
+      notify: Reload systemd
 
-# Read after the directory task, so a dry run (which does not create it) skips
-# the next step instead of failing on a missing path.
-- name: Read SMB mount point state
-  ansible.builtin.stat:
-    path: "{{ item.path }}"
-  loop: "{{ cifs_mounts | default([]) }}"
-  loop_control:
-    label: "{{ item.path }}"
-  register: proxmox_host_cifs_dirs
-  check_mode: false
+    # --- SMB shares (drogo) ------------------------------------------------------------
+    - name: Read SMB credentials file status
+      ansible.builtin.stat:
+        path: "{{ item.credentials }}"
+        get_checksum: false
+        get_mime: false
+      loop: "{{ cifs_mounts | default([]) }}"
+      loop_control:
+        label: "{{ item.credentials }}"
+      register: proxmox_host_cifs_creds
 
-- name: Mark empty SMB mount points immutable  # noqa: risky-file-permissions
-  ansible.builtin.file:
-    path: "{{ item.item.path }}"
-    attributes: "+i"
-  loop: "{{ proxmox_host_cifs_mounted.results }}"
-  loop_control:
-    label: "{{ item.item.path }}"
-    index_var: proxmox_host_idx
-  when: item.rc != 0 and proxmox_host_cifs_dirs.results[proxmox_host_idx].stat.exists
+    - name: SMB credentials file exists and is private
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.mode == '0600'
+          - item.stat.pw_name == 'root'
+        fail_msg: >-
+          {{ item.item.credentials }} must exist on {{ inventory_hostname }}, owned by root
+          with mode 0600 (username= and password= lines). It is not stored in git.
+      loop: "{{ proxmox_host_cifs_creds.results }}"
+      loop_control:
+        label: "{{ item.item.credentials }}"
 
-- name: SMB shares in fstab and mounted
-  ansible.posix.mount:
-    src: "{{ item.src }}"
-    path: "{{ item.path }}"
-    fstype: cifs
-    opts: "credentials={{ item.credentials }},{{ item.opts }}"
-    state: mounted
-  loop: "{{ cifs_mounts | default([]) }}"
-  loop_control:
-    label: "{{ item.path }}"
+    - name: Is each SMB share mounted
+      ansible.builtin.command: findmnt --noheadings {{ item.path | quote }}
+      loop: "{{ cifs_mounts | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+      register: proxmox_host_cifs_mounted
+      changed_when: false
+      failed_when: false
+      check_mode: false
 
-- name: Guests start after the NFS mount
-  ansible.builtin.copy:
-    src: 10-nfs.conf
-    dest: /etc/systemd/system/pve-guests.service.d/10-nfs.conf
-    owner: root
-    group: root
-    mode: "0644"
-    directory_mode: "0755"
-  notify: Reload systemd
+    - name: SMB mount points exist  # noqa: risky-file-permissions
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+      loop: "{{ cifs_mounts | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    # Read after the directory task, so a dry run (which does not create it) skips
+    # the next step instead of failing on a missing path.
+    - name: Read SMB mount point state
+      ansible.builtin.stat:
+        path: "{{ item.path }}"
+      loop: "{{ cifs_mounts | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+      register: proxmox_host_cifs_dirs
+      check_mode: false
+
+    - name: Mark empty SMB mount points immutable  # noqa: risky-file-permissions
+      ansible.builtin.file:
+        path: "{{ item.item.path }}"
+        attributes: "+i"
+      loop: "{{ proxmox_host_cifs_mounted.results }}"
+      loop_control:
+        label: "{{ item.item.path }}"
+        index_var: proxmox_host_idx
+      when: item.rc != 0 and proxmox_host_cifs_dirs.results[proxmox_host_idx].stat.exists
+
+    - name: SMB shares in fstab and mounted
+      ansible.posix.mount:
+        src: "{{ item.src }}"
+        path: "{{ item.path }}"
+        fstype: cifs
+        opts: "credentials={{ item.credentials }},{{ item.opts }}"
+        state: mounted
+      loop: "{{ cifs_mounts | default([]) }}"
+      loop_control:
+        label: "{{ item.path }}"
+      notify: Reload systemd
+    - name: Remove the old guests-after-NFS drop-in (replaced by 10-nas-mounts.conf)
+      ansible.builtin.file:
+        path: /etc/systemd/system/pve-guests.service.d/10-nfs.conf
+        state: absent
+      notify: Reload systemd
+    - name: NAS wait script
+      ansible.builtin.template:
+        src: nas-wait.j2
+        dest: "{{ proxmox_host_nas_wait_script }}"
+        owner: root
+        group: root
+        mode: "0750"
+    - name: NAS wait unit (the mounts come after it)
+      ansible.builtin.template:
+        src: nas-wait.service.j2
+        dest: /etc/systemd/system/nas-wait.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+    - name: Guest start gate script (waits for the NAS mounts)
+      ansible.builtin.template:
+        src: pve-wait-mounts.j2
+        dest: "{{ proxmox_host_mounts_gate_script }}"
+        owner: root
+        group: root
+        mode: "0750"
+    - name: Guests start after the NAS mounts, and only when they are all present
+      ansible.builtin.template:
+        src: 10-nas-mounts.conf.j2
+        dest: /etc/systemd/system/pve-guests.service.d/10-nas-mounts.conf
+        owner: root
+        group: root
+        mode: "0644"
+        directory_mode: "0755"
+      notify: Reload systemd
 
 # --- Backups -------------------------------------------------------------------
 - name: Set the vzdump temp directory on local disk

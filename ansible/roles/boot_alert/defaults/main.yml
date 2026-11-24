@@ -1,0 +1,14 @@
+---
+# Discord message when the host boots: when it started, when and how the previous boot ended
+# (clean shutdown or not, NUT-triggered or not). One oneshot unit at boot, nothing runs later.
+boot_alert_enabled: true
+boot_alert_script: /usr/local/sbin/boot-alert
+boot_alert_discord_env: /etc/nut/discord.env
+# The unit runs after network-online.target, which is reached before the LACP partner answers.
+# The script retries the message every boot_alert_retry_sleep seconds for up to boot_alert_wait.
+boot_alert_wait: 180
+boot_alert_retry_sleep: 10
+boot_alert_curl_timeout: 5
+boot_alert_cmd_timeout: 20
+boot_alert_curl: curl
+boot_alert_journalctl: journalctl

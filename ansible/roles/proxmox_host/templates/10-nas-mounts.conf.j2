@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Guests start after the NAS mounts, and only when every mount is present (ExecStartPre).
+# Wants= and not Requires=/RequiresMountsFor=: a failed mount unit must not make pve-guests fail
+# for good with nothing to start it again. The gate script waits and retries instead.
+{% set paths = [nfs_data.path] + (cifs_mounts | default([]) | map(attribute='path') | list) %}
+{% set units = paths | map('regex_replace', '^/', '') | map('replace', '/', '-') | map('regex_replace', '$', '.mount') | join(' ') %}
+[Unit]
+Wants={{ units }}
+After=remote-fs.target {{ units }}
+# No start rate limit: the unit restarts every {{ proxmox_host_mounts_gate_restart_delay | int }} s for as long as a NAS is missing.
+StartLimitIntervalSec=0
+
+[Service]
+ExecStartPre={{ proxmox_host_mounts_gate_script }}
+Restart=on-failure
+RestartSec={{ proxmox_host_mounts_gate_restart_delay | int }}

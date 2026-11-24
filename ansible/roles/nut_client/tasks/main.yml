@@ -83,6 +83,39 @@
     owner: root
     group: "{{ nut_client_group }}"
     mode: "0750"
+- name: Shutdown wrapper (upsmon SHUTDOWNCMD, re-checks the UPS before shutting down)
+  ansible.builtin.template:
+    src: nut-shutdown.j2
+    dest: "{{ nut_client_shutdown_script }}"
+    owner: root
+    group: root
+    mode: "0750"
+  notify: Restart nut-monitor
+# upsmon exits after it has called SHUTDOWNCMD, also when the wrapper decided not to shut down.
+# Restart=always brings it back with a clean state. It is "on-failure" in the packaged unit.
+- name: Drop-in directory of nut-monitor
+  ansible.builtin.file:
+    path: /etc/systemd/system/nut-monitor.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+- name: Restart nut-monitor whenever upsmon exits
+  ansible.builtin.copy:
+    content: |
+      # Managed by Ansible (roles/nut_client)
+      # upsmon exits after calling SHUTDOWNCMD. When nut-shutdown cancels the shutdown, upsmon has
+      # to start again, otherwise nothing watches the UPS any more.
+      [Service]
+      Restart=always
+      RestartSec=5
+    dest: /etc/systemd/system/nut-monitor.service.d/10-restart.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart nut-monitor
 - name: Discord webhook (secret, not shown in output)
   ansible.builtin.copy:
     src: "{{ nut_client_discord_env_local }}"

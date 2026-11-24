@@ -1,0 +1,62 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# ExecStartPre of pve-guests.service: guests start only when every NAS mount is present.
+# A guest started on an empty mount point runs on nothing (2026-11-24: bind mounts missing,
+# three guests failed to start, the fourth ran on empty directories).
+# Missing mounts are mounted again every {{ proxmox_host_mounts_gate_retry_sleep | int }} s. After {{ proxmox_host_mounts_gate_timeout | int }} s without success this
+# exits 1 with one Discord message, and systemd starts pve-guests again after
+# {{ proxmox_host_mounts_gate_restart_delay | int }} s (Restart=on-failure), so the guests start by themselves when the NAS is back.
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+MOUNTS=({% for m in [nfs_data.path] + (cifs_mounts | default([]) | map(attribute='path') | list) %}"{{ m }}" {% endfor %})
+TIMEOUT={{ proxmox_host_mounts_gate_timeout | int }}
+SLEEP={{ proxmox_host_mounts_gate_retry_sleep | int }}
+MARKER={{ proxmox_host_mounts_gate_alert_marker }}
+ENV_FILE={{ proxmox_host_mounts_discord_env }}
+CURL_TIMEOUT={{ proxmox_host_mounts_curl_timeout | int }}
+log() { logger -t pve-wait-mounts -p daemon.notice -- "$*"; }
+# One Discord message, never fatal. The URL goes through stdin, not the process list.
+discord() {
+  local url payload
+  url=$(sed -n 's/^DISCORD_WEBHOOK_URL=//p' "$ENV_FILE" 2>/dev/null | head -n 1 | tr -d "\"'\r")
+  if [[ ! $url =~ ^https:// ]]; then log "no Discord webhook in $ENV_FILE, message not sent"; return 0; fi
+  payload=$(python3 -c 'import json,sys; print(json.dumps({"content": sys.argv[1][:1900], "allowed_mentions": {"parse": []}}))' "$1") || return 0
+  printf 'url = "%s"\n' "$url" | curl --silent --show-error --output /dev/null \
+    --connect-timeout 3 --max-time "$CURL_TIMEOUT" \
+    --header 'Content-Type: application/json' --data-binary "$payload" --config - \
+    2>/dev/null || log "Discord message failed (ignored)"
+  return 0
+}
+find_missing() {
+  missing=()
+  local m
+  for m in "${MOUNTS[@]}"; do
+    timeout 10 mountpoint -q "$m" || missing+=("$m")
+  done
+}
+while :; do
+  find_missing
+  if [[ -z "${missing[*]:-}" ]]; then
+    log "all NAS mounts present after $SECONDS s, guests may start"
+    if [[ -e $MARKER ]]; then
+      rm -f "$MARKER"
+      discord "$(hostname -s): NAS mounts are present again, starting the guests."
+    fi
+    exit 0
+  fi
+  for m in "${missing[@]}"; do
+    log "mounting $m"
+    timeout 60 mount "$m" >/dev/null 2>&1 || log "mount $m failed, will retry"
+  done
+  find_missing
+  if [[ -z "${missing[*]:-}" ]]; then continue; fi
+  if ((SECONDS >= TIMEOUT)); then
+    log "giving up after $SECONDS s, still missing: ${missing[*]}. Guests not started, retry in {{ proxmox_host_mounts_gate_restart_delay | int }} s"
+    if [[ ! -e $MARKER ]]; then
+      : >"$MARKER" 2>/dev/null || true
+      discord "$(hostname -s): NAS mounts still missing after $SECONDS s (${missing[*]}). The guests are NOT started. Retrying every {{ proxmox_host_mounts_gate_restart_delay | int }} s, they start by themselves once the mounts are back."
+    fi
+    exit 1
+  fi
+  sleep "$SLEEP"
+done

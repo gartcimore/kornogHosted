@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Wait for the NAS units to answer on the network
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The leading "-" and the script's exit 0: a NAS that does not answer must not fail the boot.
+ExecStart=-{{ proxmox_host_nas_wait_script }}
+TimeoutStartSec={{ (proxmox_host_nas_wait_timeout | int) + 30 }}

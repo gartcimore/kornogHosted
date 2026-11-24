@@ -1,12 +1,15 @@
 # {{ ansible_managed }}
 # orisa watches the UniFi UPS 2U as a secondary client. It shuts down when the UPS
 # reports low battery (LB) or a forced shutdown (FSD), at the same moment as the NAS units.
+# upsmon also wants to shut down when it loses contact with a UPS whose last known state was
+# calibrating or on battery. SHUTDOWNCMD is therefore a wrapper that re-checks the UPS and
+# only shuts down when that is justified (see docs/orisa-proxmox-setup.md, section 7b).
 RUN_AS_USER nut
 
 MONITOR {{ nut_client_ups_name }}@{{ nut_client_server }}:{{ nut_client_port }} 1 {{ nut_client_user }} {{ nut_client_password }} secondary
 MINSUPPLIES {{ nut_client_minsupplies }}
 
-SHUTDOWNCMD "{{ nut_client_shutdowncmd }}"
+SHUTDOWNCMD "{{ nut_client_shutdown_script }}"
 
 POLLFREQ {{ nut_client_pollfreq }}
 POLLFREQALERT {{ nut_client_pollfreqalert }}
@@ -21,4 +24,6 @@ NOTIFYFLAG LOWBATT SYSLOG+EXEC
 NOTIFYFLAG FSD SYSLOG+EXEC
 NOTIFYFLAG COMMBAD SYSLOG+EXEC
 NOTIFYFLAG COMMOK SYSLOG+EXEC
-NOTIFYFLAG SHUTDOWN SYSLOG+EXEC
+# SHUTDOWN is announced when the wrapper really shuts down: upsmon sends it before the wrapper
+# has decided, which would be a false alarm when the wrapper cancels.
+NOTIFYFLAG SHUTDOWN SYSLOG

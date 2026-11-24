@@ -1,0 +1,38 @@
+---
+- name: The role is off until boot_alert_enabled is true
+  ansible.builtin.debug:
+    msg: boot_alert is disabled (boot_alert_enabled false), nothing is changed.
+  when: not (boot_alert_enabled | bool)
+- name: Boot alert
+  when: boot_alert_enabled | bool
+  block:
+    - name: Check the settings
+      ansible.builtin.assert:
+        that:
+          - boot_alert_wait | int > 0
+          - boot_alert_retry_sleep | int > 0
+        quiet: true
+    - name: Alert script
+      ansible.builtin.template:
+        src: boot-alert.j2
+        dest: "{{ boot_alert_script }}"
+        owner: root
+        group: root
+        mode: "0750"
+    - name: Alert unit
+      ansible.builtin.template:
+        src: boot-alert.service.j2
+        dest: /etc/systemd/system/boot-alert.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload systemd
+    - name: Run pending handlers before the unit is enabled
+      ansible.builtin.meta: flush_handlers
+    # Enabled, not started: starting it now would post a "started" message for a boot that
+    # happened long ago. It runs at the next boot.
+    - name: The alert unit is enabled for the next boot
+      ansible.builtin.systemd_service:
+        name: boot-alert.service
+        enabled: true
+      when: not ansible_check_mode

@@ -17,8 +17,21 @@ nut_client_pollfreqalert: 5
 nut_client_deadtime: 15
 nut_client_finaldelay: 5
 nut_client_hostsync: 15
-# Goes through systemd, so Proxmox stops the guests in order (123, 122, 121).
+# The real shutdown, run by the nut-shutdown wrapper once it has confirmed that a shutdown
+# is justified. It goes through systemd, so Proxmox stops the guests in order (123, 122, 121).
 nut_client_shutdowncmd: /sbin/shutdown -h +0
+# upsmon's SHUTDOWNCMD. upsmon also calls it when it only lost contact with a UPS whose
+# last known state was CAL (calibrating), so the wrapper re-checks before shutting down.
+nut_client_shutdown_script: /usr/local/sbin/nut-shutdown
+nut_client_upsc: /usr/bin/upsc
+# nut-notify writes "onbatt" or "online" plus a timestamp here at each event. /run/nut is a
+# tmpfs owned by root:nut, so the state is empty after a boot (assumed online, as upsmon does).
+nut_client_state_file: /run/nut/ups-last-state
+# Seconds. Contact lost while the UPS was last seen on battery: wait this long for it to come
+# back before shutting down. The UniFi trigger leaves 300 s of runtime and a clean shutdown of
+# orisa takes about 110 s, so this must stay under about 190.
+nut_client_comm_lost_grace: 120
+nut_client_shutdown_poll: 10
 nut_client_notify_script: /usr/local/sbin/nut-notify
 nut_client_discord_env: /etc/nut/discord.env
 # Plain-text webhook file on the controller, never committed (git-secret).

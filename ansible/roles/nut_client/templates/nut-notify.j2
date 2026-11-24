@@ -11,13 +11,25 @@ UPS={{ nut_client_ups_name }}@{{ nut_client_server }}:{{ nut_client_port }}
 ENV_FILE={{ nut_client_discord_env }}
 UPSC_TIMEOUT={{ nut_client_notify_upsc_timeout }}
 CURL_TIMEOUT={{ nut_client_notify_curl_timeout }}
+STATE_FILE={{ nut_client_state_file }}
 
-# Only the known upsmon events pass, anything else is shown as UNKNOWN.
+# Only the known upsmon events pass, anything else is shown as UNKNOWN. SHUTDOWN_SKIPPED and
+# SHUTDOWN (sent by nut-shutdown, not by upsmon) report the wrapper's decision.
 case "${NOTIFYTYPE:-}" in
-  ONLINE|ONBATT|LOWBATT|FSD|COMMOK|COMMBAD|SHUTDOWN|REPLBATT|NOCOMM|NOPARENT) type=$NOTIFYTYPE ;;
+  ONLINE|ONBATT|LOWBATT|FSD|COMMOK|COMMBAD|SHUTDOWN|REPLBATT|NOCOMM|NOPARENT|SHUTDOWN_SKIPPED) type=$NOTIFYTYPE ;;
   *) type=UNKNOWN ;;
 esac
 msg="$*"
+# Remember whether the UPS was last seen on battery: nut-shutdown reads it after a lost contact.
+# Written before anything slow, atomically, and a failure here never matters.
+case $type in
+  ONBATT|LOWBATT) state=onbatt ;;
+  ONLINE) state=online ;;
+  *) state="" ;;
+esac
+if [[ -n $state ]]; then
+  { printf '%s %s\n' "$state" "$(date +%s)" > "$STATE_FILE.tmp" && mv -f "$STATE_FILE.tmp" "$STATE_FILE"; } 2>/dev/null || true
+fi
 
 # Numbers only, anything else (error text, empty) becomes "unknown".
 read_var() {

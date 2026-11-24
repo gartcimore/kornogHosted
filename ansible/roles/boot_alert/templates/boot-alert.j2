@@ -1,0 +1,117 @@
+#!/usr/bin/python3
+# {{ ansible_managed }}
+# Posts "<host> started at <time>. Previous shutdown: ..." to Discord at boot.
+# The previous boot comes from the journal (journalctl --boot=-1): last entry = when it stopped,
+# a poweroff/reboot line near the end = clean shutdown, a NUT line = triggered by the UPS monitor.
+# Never fails and never blocks the boot: short timeouts, every error is logged and ignored.
+import datetime
+import json
+import re
+import socket
+import subprocess
+import syslog
+import time
+ENV_FILE = "{{ boot_alert_discord_env }}"
+CURL = "{{ boot_alert_curl }}"
+JOURNALCTL = "{{ boot_alert_journalctl }}"
+WAIT = {{ boot_alert_wait | int }}
+RETRY_SLEEP = {{ boot_alert_retry_sleep | int }}
+CURL_TIMEOUT = {{ boot_alert_curl_timeout | int }}
+CMD_TIMEOUT = {{ boot_alert_cmd_timeout | int }}
+UPTIME_FILE = "/proc/uptime"
+HOST = socket.gethostname().split(".")[0]
+def log(msg):
+    syslog.openlog("boot-alert")
+    syslog.syslog(syslog.LOG_NOTICE, msg)
+def journal(*args):
+    try:
+        res = subprocess.run([JOURNALCTL, "--no-pager", "--quiet"] + list(args),
+                             capture_output=True, text=True, timeout=CMD_TIMEOUT, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return res.stdout if res.returncode == 0 else ""
+def fmt(moment):
+    return moment.strftime("%Y-%m-%d %H:%M:%S %Z").strip()
+def duration(seconds):
+    minutes = int(seconds // 60)
+    if minutes < 1:
+        return "under 1 min"
+    hours, minutes = divmod(minutes, 60)
+    return ("%d h %d min" % (hours, minutes)) if hours else ("%d min" % minutes)
+def boot_time():
+    with open(UPTIME_FILE, encoding="utf-8") as fh:
+        up = float(fh.read().split()[0])
+    return datetime.datetime.now().astimezone() - datetime.timedelta(seconds=up)
+def previous_shutdown(started):
+    line = journal("--boot=-1", "--lines=1", "--output=short-iso").strip().splitlines()
+    if not line:
+        return "no previous boot in the journal"
+    try:
+        stopped = datetime.datetime.strptime(line[-1].split()[0], "%Y-%m-%dT%H:%M:%S%z").astimezone()
+    except (ValueError, IndexError):
+        return "previous boot end time unreadable"
+    tail = journal("--boot=-1", "--lines=40", "--output=cat")
+    clean = re.search(r"Journal stopped|Reached target .*(Power-Off|Reboot|Halt)|poweroff\.target|reboot\.target",
+                      tail) is not None
+    down = duration((started - stopped).total_seconds())
+    if clean:
+        text = "clean at %s (off for %s)" % (fmt(stopped), down)
+    else:
+        text = "NOT clean, last log entry %s (off for %s), power loss or crash" % (fmt(stopped), down)
+    nut = journal("--boot=-1", "--unit=nut-monitor.service", "--output=cat") \
+        + journal("--boot=-1", "--identifier=nut-shutdown", "--output=cat")
+    if re.search(r"power-fail shutdown|nut-shutdown|shutting down:", nut):
+        text += ", started by the UPS monitor (NUT)"
+    return text
+def webhook():
+    try:
+        with open(ENV_FILE, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("DISCORD_WEBHOOK_URL="):
+                    url = line.split("=", 1)[1].strip().strip("\"'")
+                    if re.fullmatch(r"https://[^\s\"\\]+", url):
+                        return url
+    except OSError:
+        pass
+    return None
+def send(text):
+    url = webhook()
+    if not url:
+        log("no Discord webhook in %s, message not sent" % ENV_FILE)
+        return None
+    payload = json.dumps({"content": text[:1900], "allowed_mentions": {"parse": []}})
+    try:
+        # The URL goes through stdin so it does not show in the process list.
+        res = subprocess.run(
+            [CURL, "--silent", "--show-error", "--fail", "--output", "/dev/null",
+             "--connect-timeout", "3", "--max-time", str(CURL_TIMEOUT),
+             "--header", "Content-Type: application/json",
+             "--data-binary", payload, "--config", "-"],
+            input='url = "%s"\n' % url, text=True, capture_output=True,
+            timeout=CURL_TIMEOUT + 5, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return res.returncode == 0
+def main():
+    try:
+        started = boot_time()
+        text = "%s started at %s. Previous shutdown: %s." % (HOST, fmt(started), previous_shutdown(started))
+    except Exception as exc:  # the message is worth sending even without the details
+        log("could not build the full message (%s)" % exc)
+        text = "%s started (details unavailable, see journalctl -t boot-alert)." % HOST
+    log(text)
+    deadline = time.monotonic() + WAIT
+    while True:
+        result = send(text)
+        if result is None:
+            return
+        if result:
+            return
+        if time.monotonic() + RETRY_SLEEP >= deadline:
+            log("Discord message failed, gave up after %d s (ignored)" % WAIT)
+            return
+        time.sleep(RETRY_SLEEP)
+try:
+    main()
+except Exception as exc:  # never fail the boot
+    log("unexpected error (ignored): %s" % exc)

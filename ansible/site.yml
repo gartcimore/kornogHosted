@@ -11,6 +11,8 @@
       tags: [postfix]
     - role: disk_alert
       tags: [diskalert]
+    - role: boot_alert
+      tags: [bootalert]
     - role: lxc_guest
       tags: [lxc]
 

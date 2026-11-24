@@ -14,10 +14,14 @@ proxmox_admin_group: admins
 proxmox_admin_role: Administrator
 
 # NFS share from Ymir, mounted once on the host and bind-mounted into guests.
+# Boot order for every NAS mount: x-systemd.requires=nas-wait.service makes the mount wait for
+# the NAS units to answer on the network (role proxmox_host, tag mounts), nofail keeps a missing
+# NAS from stopping the boot, and the mount timeout bounds each attempt. pve-guests.service
+# then waits for all the mounts (guide section 9.3).
 nfs_data:
   src: 192.168.0.54:/volume1/data
   path: /mnt/dataYmir
-  opts: rw,hard,nofail,_netdev,retry=5,x-systemd.mount-timeout=30,x-systemd.device-timeout=30,vers=3,sec=sys
+  opts: rw,hard,nofail,_netdev,retry=5,x-systemd.requires=nas-wait.service,x-systemd.mount-timeout=30,x-systemd.device-timeout=30,vers=3,sec=sys
 
 # SMB shares mounted on the host and bind-mounted into guests. The credentials
 # file is created by hand (root, mode 0600) and is never stored in this repo.
@@ -34,11 +38,11 @@ cifs_mounts:
   - src: //192.168.0.44/data
     path: /mnt/dataDrogo
     credentials: /root/.smb-drogo
-    opts: vers=3.0,ro,nofail,_netdev,iocharset=utf8,nodev,nosuid,uid=101000,gid=101000,dir_mode=0550,file_mode=0440
+    opts: vers=3.0,ro,nofail,_netdev,x-systemd.requires=nas-wait.service,x-systemd.mount-timeout=30,iocharset=utf8,nodev,nosuid,uid=101000,gid=101000,dir_mode=0550,file_mode=0440
   - src: //192.168.0.44/data
     path: /mnt/dataDrogoRW
     credentials: /root/.smb-drogo
-    opts: vers=3.0,nofail,_netdev,iocharset=utf8,nodev,nosuid,uid=1000,gid=1000,dir_mode=0775,file_mode=0664
+    opts: vers=3.0,nofail,_netdev,x-systemd.requires=nas-wait.service,x-systemd.mount-timeout=30,iocharset=utf8,nodev,nosuid,uid=1000,gid=1000,dir_mode=0775,file_mode=0664
 
 # NFS storage used by vzdump backups.
 backup_storage:

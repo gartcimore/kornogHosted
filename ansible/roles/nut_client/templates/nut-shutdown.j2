@@ -1,0 +1,65 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# upsmon SHUTDOWNCMD. upsmon calls it when it considers the UPS critical: FSD, on battery with
+# low battery, or contact lost with a UPS last known to be calibrating or on battery (upsmon.c,
+# is_ups_critical). The last case fired on 2026-11-24: one failed poll, UPS in fact online.
+# This wrapper checks again before shutting down:
+#   - UPS answers with FSD, or OB and LB together: shut down now.
+#   - UPS answers with anything else: do not shut down.
+#   - UPS does not answer and nut-notify last saw it online (or never saw it on battery): do not
+#     shut down, alert.
+#   - UPS does not answer and was last seen on battery: wait {{ nut_client_comm_lost_grace }} s for it to answer, shut down if
+#     it never does.
+# upsmon exits after calling this command, so nut-monitor.service has Restart=always (drop-in):
+# when the wrapper does not shut down, upsmon starts again with a clean state (no stale CAL).
+# Runs as root, called by upsmon. Never fails: every error path ends in a decision.
+set -u
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+UPS={{ nut_client_ups_name }}@{{ nut_client_server }}:{{ nut_client_port }}
+UPSC={{ nut_client_upsc }}
+NOTIFY={{ nut_client_notify_script }}
+STATE_FILE={{ nut_client_state_file }}
+SHUTDOWN_CMD="{{ nut_client_shutdowncmd }}"
+GRACE={{ nut_client_comm_lost_grace | int }}
+POLL={{ nut_client_shutdown_poll | int }}
+log() { logger -t nut-shutdown -p daemon.warning -- "$*"; }
+alert() { NOTIFYTYPE=$1 "$NOTIFY" "$2" >/dev/null 2>&1 || true; }
+# Prints the status words (OL, OB, LB, ...), nothing when the UPS cannot be read.
+get_status() {
+  local s
+  s=$(timeout 5 "$UPSC" "$UPS" ups.status 2>/dev/null | head -n 1) || s=""
+  if [[ $s =~ ^[A-Z]+( [A-Z]+)*$ ]]; then printf '%s' "$s"; fi
+}
+do_shutdown() {
+  local cmd
+  log "shutting down: $1"
+  alert SHUTDOWN "$1"
+  read -r -a cmd <<<"$SHUTDOWN_CMD"
+  exec "${cmd[@]}"
+}
+skip() {
+  log "shutdown skipped: $1"
+  alert SHUTDOWN_SKIPPED "$1. No shutdown. upsmon is restarted."
+  exit 0
+}
+# The UPS answered: only FSD, or OB with LB, is a reason to shut down.
+decide_reachable() {
+  local words=" $1 "
+  if [[ $words == *" FSD "* ]]; then do_shutdown "UPS status $1 (forced shutdown)"; fi
+  if [[ $words == *" OB "* && $words == *" LB "* ]]; then do_shutdown "UPS status $1 (low battery)"; fi
+  skip "UPS answers with status $1 (no FSD, no low battery)"
+}
+status=$(get_status)
+if [[ -n $status ]]; then decide_reachable "$status"; fi
+last=$(cut -d ' ' -f 1 "$STATE_FILE" 2>/dev/null || true)
+if [[ $last != onbatt ]]; then
+  skip "UPS not answering, last seen online (not on battery)"
+fi
+log "UPS not answering and last seen on battery, waiting up to $GRACE s for it"
+end=$((SECONDS + GRACE))
+while ((SECONDS < end)); do
+  sleep "$POLL"
+  status=$(get_status)
+  if [[ -n $status ]]; then decide_reachable "$status"; fi
+done
+do_shutdown "UPS last seen on battery and not answering for $GRACE s"

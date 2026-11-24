@@ -14,3 +14,19 @@ proxmox_host_packages:
 # vzdump writes temp files here. Needed so unprivileged LXC backups to NFS
 # do not fail with "Cannot open: Permission denied".
 proxmox_host_vzdump_tmpdir: /var/tmp
+# --- NAS mounts at boot (tag mounts) ---------------------------------------------
+# nas-wait.service: every NAS mount waits for the NAS units to answer on their NFS (2049) and
+# SMB (445) ports, for at most this many seconds, then goes on (a missing NAS must not stop the boot).
+proxmox_host_nas_wait_script: /usr/local/sbin/nas-wait
+proxmox_host_nas_wait_timeout: 120
+# pve-guests.service does not start guests until every NAS mount is present. The check mounts
+# what is missing again every retry_sleep seconds. After timeout seconds without success it
+# fails (one Discord message), and systemd starts it again after restart_delay seconds, so the
+# guests start by themselves once the NAS is back. The host stays up and reachable meanwhile.
+proxmox_host_mounts_gate_script: /usr/local/sbin/pve-wait-mounts
+proxmox_host_mounts_gate_timeout: 600
+proxmox_host_mounts_gate_retry_sleep: 15
+proxmox_host_mounts_gate_restart_delay: 60
+proxmox_host_mounts_gate_alert_marker: /run/pve-wait-mounts.alerted
+proxmox_host_mounts_discord_env: /etc/nut/discord.env
+proxmox_host_mounts_curl_timeout: 5

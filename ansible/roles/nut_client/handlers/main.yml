@@ -1,4 +1,7 @@
 ---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
 - name: Restart nut-monitor
   ansible.builtin.systemd_service:
     name: nut-monitor

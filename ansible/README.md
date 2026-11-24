@@ -11,9 +11,10 @@ Rebuilds the configuration described in [`docs/orisa-proxmox-setup.md`](../docs/
 | `host_vars/<guest>.yml` | One file per guest: VMID, IP, size, mounts (`lxc:`) and compose stacks. This is the single place an IP is written for a guest |
 | `site.yml` | Plays: host and guest creation on orisa, then software inside the guests (Docker on `guests:!native_guests`, native services on `native_guests`) |
 | `roles/proxmox_host` | Packages, key-only SSH, NFS data mount, guest start ordering, vzdump tmpdir, backup storage and nightly job, web UI admin group/user/ACL |
-| `roles/nut_client` | NUT client (`upsmon`) for the UniFi UPS 2U: shuts orisa down with the NAS units, Discord alerts with the battery level. Tag `nut`. Needs `nut/discord.env` |
+| `roles/nut_client` | NUT client (`upsmon`) for the UniFi UPS 2U: shuts orisa down with the NAS units, Discord alerts with the battery level. Tag `nut`. Needs `nut/discord.env`. `SHUTDOWNCMD` is the wrapper `nut-shutdown`: a lost UPS contact shuts down only if the UPS was last seen on battery (guide 7b) |
 | `roles/postfix_relay` | Postfix on orisa for email notifications: direct delivery on port 25 to an OVH redirection address (default mode `direct`, no secret), IPv4 only, bounces to a log-only sink so they never loop back to root, a Discord queue alert (timer), and optionally (`-e postfix_relay_manage_matchers=true`) the matchers `default-matcher` (Discord, everything) and `email` (all types, never `system-mail` or severity `unknown`). Optional fallback `postfix_relay_mode: relay` (authenticated SMTP, OVH or Gmail profile, login from `postfix/relay.env`). Off until `postfix_relay_enabled: true`. Tag `postfix`. Prepared, not applied (guide section 7d) |
 | `roles/disk_alert` | One timer on orisa (every 15 min) that posts to Discord when the host root filesystem, the LVM-thin pool (data or metadata) or the root filesystem of a guest (`pct exec <vmid> -- df`, every guest in the inventory) is 85% used or more. Repeats at most every 24 h, posts a recovery message. Reads `/etc/nut/discord.env` (installed by `nut_client`), never fails the unit. Tag `diskalert`. Guide section 7e |
+| `roles/boot_alert` | Oneshot unit that posts "orisa started at ..., previous shutdown clean/not clean ..." to Discord at each boot. Reads `/etc/nut/discord.env`, never fails the boot. Tag `bootalert`. Guide section 7f |
 | `roles/lxc_guest` | Downloads the template, creates and starts each guest |
 | `roles/postgres_server` | Native PostgreSQL 17 for the `db` guest: roles and databases per service, TLS with the wildcard certificate (kept fresh by a timer), `pg_hba` per client address, nightly dumps to Ymir with a failure alert, a Discord warning when the certificate has fewer than `postgres_server_cert_warn_days` (14) days left, guest time zone `postgres_server_timezone` (Europe/Paris). Tag `postgres`. Needs `postgres/db-passwords.env` and `nut/discord.env`. Prepared, not applied |
 | `roles/docker_host` | Time zone, Docker CE and compose plugin |
@@ -41,7 +42,7 @@ ansible-playbook site.yml --check --diff -K
 ansible-playbook site.yml -K
 ```
 
-Useful subsets: `--tags host`, `--tags nut`, `--tags postfix`, `--tags diskalert`, `--tags lxc`, `--tags docker`, `--tags stacks`, and `--limit rproxy` for one guest.
+Useful subsets: `--tags host`, `--tags nut`, `--tags postfix`, `--tags diskalert`, `--tags bootalert`, `--tags mounts` (NAS mounts, `nas-wait`, guest start gate; role `proxmox_host`, guide 9.3), `--tags lxc`, `--tags docker`, `--tags stacks`, and `--limit rproxy` for one guest.
 
 On an already-built host the dry run should show no changes on orisa. The first real run changes two cosmetic things on `rproxy`: the Docker apt source file is rewritten in the module's format, and apt refreshes.
 
