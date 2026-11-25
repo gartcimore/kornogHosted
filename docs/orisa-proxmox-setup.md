@@ -14,8 +14,8 @@ Status legend: [x] done, [ ] to do.
 - [x] Step 3: SSH key-only (root by key still allowed)
 - [x] Step 4: static IP, UniFi reservation and DNS record (rack bond planned, see 4b)
 - [x] Step 5: Let's Encrypt certificate for `orisa.kornoglab.fr` (expires 2027-02-13, renews automatically)
-- [x] Step 6 (storage part): NFS storage `ymir-backup` (Ymir `/volume1/proxmox-backup`, 800 GB quota, content Backup only). Backup job and restore test pending until the first guest exists.
-- [x] Step 9.1-9.2: `data` share mounted on host at `/mnt/dataYmir` (NFSv3, no squash, real UIDs visible). Guest bind mounts and id-map pending.
+- [x] Step 6 (storage part): NFS storage `ymir-backup` (Ymir `/volume1/proxmox-backup`, 800 GB quota, content Backup only). Backup job and restore test done (see below).
+- [x] Step 9.1-9.2: `data` share mounted on host at `/mnt/dataYmir` (NFSv3, no squash, real UIDs visible). Guest bind mounts and id-map done (guests below).
 - [x] Step 7: Discord notifications working; SMART baseline OK (NVMe 0% used, about 41 C idle).
 
 Fixed addresses (host and guests) are tracked in [ip-inventory.md](ip-inventory.md).
@@ -23,15 +23,16 @@ Fixed addresses (host and guests) are tracked in [ip-inventory.md](ip-inventory.
 Configuration as code: the host settings, guest definitions, Docker and the `rproxy` stack are described in [`../ansible/`](../ansible/README.md). A dry run (`--check`) against orisa and `rproxy` shows no changes on orisa. What is not managed (certificate, notifications, 2FA, network bridge/bond, BIOS, UniFi, DSM) is listed in that README and stays documented here.
 
 - [x] Step 4b: orisa moved to the rack, LACP bond of `nic0` and `nic1` (ports 7 and 8 aggregated), applied and verified 2026-11-18. Failover tested on `nic0` (about 0.6 s outage). Throughput tried: no gain between orisa and Ymir, as expected.
-- [x] Step 8 (`rproxy`): LXC 121 at `192.168.0.21` (Debian 13, unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB). Wildcard cert bind-mounted read-only at `/certs` from the host's `/mnt/dataYmir/containers/volumes/acme/certs`. Docker CE installed. Traefik (file provider only, config in `rproxy/`, deployed to `/opt/rproxy`) tested with `curl --resolve` against heimdall routes: valid cert, HTTP redirects to HTTPS. DNS still points at heimdall.
+- [x] Step 8 (`rproxy`): LXC 121 at `192.168.0.21` (Debian 13, unprivileged, nesting + keyctl, 1 core, 512 MB, 8 GB). Wildcard cert bind-mounted read-only at `/certs` from the host's `/mnt/dataYmir/containers/volumes/acme/certs`. Docker CE installed. Traefik (file provider only, config in `rproxy/`, deployed to `/opt/rproxy`) tested with `curl --resolve` against heimdall routes: valid cert, HTTP redirects to HTTPS. DNS records now point at `192.168.0.21`.
 
-- [x] Step 8 (`jellyfin`): LXC 122 at `192.168.0.22` (4 cores, 4 GB RAM, 32 GB disk since 2026-11-21 (created with 16 GB), start order 2), created by the Ansible playbook. Media mounted read-only at `/mnt/dataYmir/media`, iGPU passed through (see "Pass through the iGPU"), hardware transcoding verified. Currently a fresh Jellyfin with a throwaway admin: heimdall's config (4.4 GB) is not migrated yet and DNS still points at heimdall.
+- [x] Step 8 (`jellyfin`): LXC 122 at `192.168.0.22` (4 cores, 4 GB RAM, 32 GB disk since 2026-11-21 (created with 16 GB), start order 2), created by the Ansible playbook. Media mounted read-only at `/mnt/dataYmir/media`, iGPU passed through (see "Pass through the iGPU"), hardware transcoding verified. heimdall's config was migrated and DNS moved to orisa. Transcode segment deletion is on (Dashboard > Playback > Transcoding) since the 2026-11-21 disk-full incident (section 7e).
 - [x] Backup job `backup-c3366771-401a` (02:00, all guests, `ymir-backup`) exists; restore of `rproxy` tested.
 
 - [x] Step 8 (`arr`): LXC 123 at `192.168.0.23` (4 cores, 6 GB RAM, 24 GB disk, start order 3), created by the Ansible playbook with UID/GID 1000 mapped to host 1000, `/dev/net/tun`, and read-write mounts of Ymir (`/mnt/dataYmir`, NFS) and drogo (`/mnt/dataDrogoRW` on the host, `/mnt/data` in the guest). Runs the `parr` stack (pinned commit, plus `arr/docker-compose.override.yml`, which turns Traefik and socket-proxy off) under `arr.service`. gluetun connects with kernel WireGuard (module loaded at boot by the playbook). Data copied from heimdall's `/docker/appdata` on 2026-11-17 and verified (file counts and sizes identical). Routes in `rproxy/traefik/dynamic/routes-arr.yml`, UniFi records moved to `192.168.0.21`. Details and lessons: [arr-guest-plan.md](arr-guest-plan.md).
 - [x] PostgreSQL service: LXC `db` (126, `192.168.0.26`, native PostgreSQL 17, TLS, nightly dumps to Ymir), Ansible role `postgres_server`, **applied 2026-11-18** and verified (roles, databases, TLS, first backup, restore). See [section 7c](#7c-postgresql-service-db-guest--applied).
-- [ ] UPS and safe shutdown: Ansible role `nut_client` written and dry-run checked, **prepared, not applied** (orisa does not read the UPS yet). See [section 7b](#7b-ups-and-safe-shutdown).
-- [ ] Email notifications: Ansible role `postfix_relay` (direct delivery to an OVH redirection address, loop-proof matchers, queue alert; authenticated relay only as an optional fallback), **prepared, not applied**. See [section 7d](#7d-email-notifications-again-postfix-direct-delivery-to-an-ovh-redirection--prepared-not-applied).
+- [x] UPS and safe shutdown: Ansible role `nut_client`, **applied 2026-11-18**. After the 2026-11-24 false shutdown (lost contact with an online UPS), the shutdown wrapper `nut-shutdown` was **applied 2026-11-24**. See [section 7b](#7b-ups-and-safe-shutdown).
+- [x] Email notifications: Ansible role `postfix_relay` (direct delivery to an OVH redirection address, loop-proof matchers, queue alert; authenticated relay only as an optional fallback), **applied 2026-11-21** (Postfix, test mail delivered through OVH to Gmail, matchers `default-matcher` = Discord and `email` = mail-to-root). See [section 7d](#7d-email-notifications-again-postfix-direct-delivery-to-an-ovh-redirection--applied).
+- [x] Disk usage alert (role `disk_alert`, section 7e), boot alert (role `boot_alert`, section 7f) and the boot order fix for the NAS mounts (section 9, tag `mounts`): **applied 2026-11-24**. The boot order and boot alert are proven only at the next reboot.
 - Drogo is mounted twice on the host: `/mnt/dataDrogo` (read-only, owner 101000, for jellyfin) and `/mnt/dataDrogoRW` (read-write, owner 1000, for arr). Each guest's own `mpN` line decides which one it sees.
 
 ### Where we stopped / next
@@ -41,9 +42,8 @@ Configuration as code: the host settings, guest definitions, Docker and the `rpr
 3. Build the `services` guest (valkey, zigbee2mqtt, ...) from the other `kornogHosted` stacks. PostgreSQL no longer goes there: it has its own guest `db` (next item).
 3b. PostgreSQL `db` guest: applied. Left to do: Infisical's client address (see [section 7c](#7c-postgresql-service-db-guest--applied)).
 4. Authelia and access hardening (guest firewall, container names for integrations, login in front of the admin UIs): [auth-and-hardening-plan.md](auth-and-hardening-plan.md). Noted, not started.
-5. Apply the `nut_client` role (webhook file, dry run, `--tags nut`, checks: section 7b), then set the BIOS "power on after AC loss".
-5b. Apply the `postfix_relay` role and then the matchers (section 7d).
-6. Pending: two-factor (step 2b), confirm `default-matcher` lists `discord`, BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
+5. At the next reboot of orisa: check the boot alert in Discord and `journalctl -b -t nas-wait -t pve-wait-mounts -t boot-alert`. After the first real notification (for example the nightly backup), check that the mail arrives in Gmail. Set the BIOS "power on after AC loss".
+6. Pending: two-factor (step 2b), BIOS settings (SVM, IOMMU, power on after AC loss), restrict Ymir's `data` NFS export to orisa after heimdall is retired, drift check for guest definitions in Ansible.
 
 > Commands marked `# host` run in a shell on orisa (web UI Shell, console or SSH). Check your version first with `pveversion`. Proxmox VE 8 (Debian 12) and 9 (Debian 13) differ in apt source file format (see step 1).
 
@@ -283,7 +283,7 @@ Disk layout on a single 512 GB drive: `local` (ISOs, templates, backups) and `lo
 ## 7. Monitoring and notifications
 
 - [x] Datacenter > Notifications: Webhook target `discord` (POST to the Discord webhook URL, token stored as secret `token` and referenced as `{{ secrets.token }}`, header `Content-Type: application/json`, body `{"content": "**[{{ severity }}]** {{ escape title }}"}`), added to `default-matcher`. Keep the body short: Discord rejects messages over 2000 characters (HTTP 400), and backup failure logs exceed that. Other options are SMTP, Gotify and ntfy. Mail from `smartd` and cron goes to root, and the forwarder turns it into a notification of type `system-mail`.
-  - **Email is off (2026-11-21), its return is prepared in section 7d.** `default-matcher` used to list `mail-to-root` besides `discord`. That target mails root's address, but Postfix on orisa could not reach Gmail's port 25 (the Freebox blocked it), so the mails sat in the queue and returned as "Undelivered Mail Returned to Sender" after 5 days. Proxmox forwards mail to root into its own notification system (`/root/.forward`), so each bounce reached Discord as `[unknown]` and was mailed again, a slow loop (22 mails stuck, 13 of them bounce notices). Fix: `pvesh set /cluster/notifications/matchers/default-matcher --target discord`, then `postsuper -d ALL` to empty the queue. Mail to root from other sources (cron, disk health) still goes through the forwarder, now to Discord only. Section 7d (role `postfix_relay`, prepared, not applied) brings email back by direct delivery to an OVH redirection address (no mailbox needed), with the loop made impossible by construction.
+  - **Email was off on 2026-11-21 and is back the same day through section 7d.** `default-matcher` used to list `mail-to-root` besides `discord`. That target mails root's address, but Postfix on orisa could not reach Gmail's port 25 (the Freebox blocked it), so the mails sat in the queue and returned as "Undelivered Mail Returned to Sender" after 5 days. Proxmox forwards mail to root into its own notification system (`/root/.forward`), so each bounce reached Discord as `[unknown]` and was mailed again, a slow loop (22 mails stuck, 13 of them bounce notices). Fix: `pvesh set /cluster/notifications/matchers/default-matcher --target discord`, then `postsuper -d ALL` to empty the queue. Mail to root from other sources (cron, disk health) still goes through the forwarder, now to Discord only. Section 7d (role `postfix_relay`, applied 2026-11-21) brings email back by direct delivery to an OVH redirection address (no mailbox needed), with the loop made impossible by construction.
 - [ ] SMART: `smartctl -a /dev/nvme0` for a baseline. Proxmox runs `smartd`; set the email in `/etc/smartd.conf` or rely on notifications.
 - [x] Homarr Proxmox integration (2026-11-19): a dashboard widget showing node, containers, storage and CPU/RAM. It uses a dedicated read-only account in the built-in `pve` realm, because the docs say PAM users may not work with the API. Commands (run from the desktop, single-quote anything with `!` or bash history expansion eats it):
   - `pveum user add homarr@pve --comment 'Homarr read-only monitoring'` and `pveum acl modify / --users homarr@pve --roles PVEAuditor`
@@ -293,8 +293,8 @@ Disk layout on a single 512 GB drive: `local` (ISOs, templates, backups) and `lo
   - In Homarr (Management > Integrations > Proxmox): URL `https://orisa.kornoglab.fr:8006` (the certificate is valid, nothing to disable), username `homarr`, realm `pve`, token ID `homarr`, the secret as API key. Homarr builds the token as `<username>@<realm>!<tokenId>`.
   - Result: 1 node, 4 containers, 0 VMs, 3 storages. Open: the integration is stored with an `http://` URL. Port 8006 redirects plain HTTP to HTTPS, so it works, but it should be edited to `https://` (Homarr asks for the key again on save). Revoke with `pveum user token remove homarr@pve homarr`.
 - [ ] `sensors-detect` then `sensors` to check temperatures. Mini PCs run warm under sustained transcoding.
-- [ ] Optional: expose metrics (Datacenter > Metric Server) to InfluxDB/Prometheus, and add a Proxmox integration in Homarr.
-- [x] UPS: the UniFi UPS 2U powers orisa and both NAS units. Monitoring and safe shutdown on orisa: section 7b (prepared, not applied).
+- [ ] Optional: expose metrics (Datacenter > Metric Server) to InfluxDB/Prometheus. (The Homarr Proxmox integration is done, see above.)
+- [x] UPS: the UniFi UPS 2U powers orisa and both NAS units. Monitoring and safe shutdown on orisa: section 7b (applied).
 
 ---
 
@@ -413,7 +413,7 @@ The server has "Login Credential" off, so it should not check anything. That is 
 - **UPS firmware.** UniFi UPS release 1.6.9 fixed the NUT server not reporting `FSD` to clients when safe shutdown was armed on battery. Checked 2026-11-18: the UPS reports its firmware as up to date in UniFi (version number not recorded). Re-check after UniFi updates.
 - The UPS runtime estimate is not trustworthy (load reported as 0). The 5-minute trigger is UniFi's, not orisa's.
 - A real power cut test has not been done, and should not be done just to test (see below). The wrapper was tested with a fake `upsc`, `shutdown` and `nut-notify` on the desktop (every row of the table above), not on orisa.
-- The notify script was tested on the desktop with stub `curl` and `upsc` only. It has not run on orisa or sent a message to the real Discord webhook.
+- The notify script has run for real on orisa: the COMMBAD, SHUTDOWN and COMMOK messages of 2026-11-24 reached Discord.
 
 ### What must never be run as a "test"
 
@@ -559,7 +559,9 @@ Resolved: the early certificate expiry warning and the guest time zone (see "TLS
 
 ---
 
-## 7d. Email notifications again (Postfix, direct delivery to an OVH redirection) — prepared, not applied
+## 7d. Email notifications again (Postfix, direct delivery to an OVH redirection) — applied
+
+**Applied 2026-11-21.** `postfix_relay_enabled: true` in `group_vars/proxmox.yml`. Checked after apply: `inet_protocols` ipv4, no relayhost, loopback-only, `envelope_sender`, empty queue. root@pam's email is set to the OVH redirection address (by hand, `postfix_relay_root_email` stays empty). One test mail: envelope sender `pve-bounce@orisa.kornoglab.fr`, `relay=mx1.mail.ovh.net:25 ... status=sent (250 2.0.0 Ok)`, arrived in Gmail **spam** (marked not spam; a Gmail filter on the recipient with "never send to spam" is the reliable fix). Matchers applied with `-e postfix_relay_manage_matchers=true` and read back: `default-matcher` targets `discord` only, `email` targets `mail-to-root` for severities info, notice, warning, error and never `system-mail`. Not yet checked: a real Proxmox notification by mail (the nightly backup will be the first), and a forced bounce through the sink (`journalctl -t postfix-bounce`).
 Role `postfix_relay` (tag `postfix`). It is off until `postfix_relay_enabled: true`, so a normal `site.yml` run changes nothing. Steps 1 to 4 are a separate run from step 5 (the matchers). Placeholders: `<redirect-address>` is the OVH redirection address on `kornoglab.fr` that forwards to your Gmail, `<gmail-address>` is your Gmail. Neither is stored in the repo.
 ### Decisions and why
 - **Default: direct delivery (`postfix_relay_mode: direct`).** Decided by the user on 2026-11-21. The OVH offer of `kornoglab.fr` is the free "Redirection" offer: there is no mailbox and therefore no SMTP login, so an authenticated relay is not possible. Postfix on orisa delivers itself on port 25 (the Freebox block was lifted) to `<redirect-address>`; OVH's MX (`mx1.mail.ovh.net`) accepts it and forwards it to Gmail. Verified live on 2026-11-21: `mx1.mail.ovh.net` answered `250 2.0.0 Ok: queued` to a test mail from orisa and Gmail delivered it (first into spam; mark it "not spam" and create a Gmail filter on the address). Gmail itself refuses direct delivery (`550-5.7.26`, no SPF or DKIM for `orisa.kornoglab.fr`), so the recipient must be the OVH address, never a Gmail address. No secret, no SASL package, no password is needed.
@@ -696,7 +698,7 @@ To see a real message, lower the threshold for one run: `ansible-playbook site.y
 ### Tested (2026-11-21, local, fake `df`, `pct`, `lvs` and `curl`, no webhook contacted)
 Under threshold (silent), crossing (one message with the item), repeat suppressed, a second item crossing (new message), hysteresis band (silent), recovery message, repeat after 24 h, Discord failure (exit 0, state not saved, retried), missing webhook file (exit 0, logged), unreadable `df` output (exit 0).
 
-## 7f. Boot alert (role `boot_alert`) — prepared, not applied
+## 7f. Boot alert (role `boot_alert`) — applied 2026-11-24 (unit enabled, first message at the next boot)
 ### What it does and why
 On 2026-11-24 orisa was off for 7 h 35 min before anyone noticed. `boot-alert.service` (tag `bootalert`) runs once per boot, after `network-online.target`, and posts one Discord message, for example:
 `orisa started at 2026-11-24 20:37:10 CET. Previous shutdown: clean at 2026-11-24 13:02:50 CET (off for 7 h 34 min), started by the UPS monitor (NUT).`
@@ -877,7 +879,7 @@ Keep the **same path inside every guest** (`/mnt/dataYmir`), so compose files (`
 Mount read-only where write is not needed. Jellyfin only reads media: `mp0: /mnt/dataYmir,mp=/mnt/dataYmir,ro=1`. Its config stays on the guest disk.
 
 Mount-ordering: see "Boot order" just below. The earlier fix (a drop-in with `Wants=mnt-dataYmir.mount`) was not enough on 2026-11-24.
-#### Boot order (rewritten after the 2026-11-24 outage; role `proxmox_host`, tag `mounts`; prepared, not applied)
+#### Boot order (rewritten after the 2026-11-24 outage; role `proxmox_host`, tag `mounts`; applied 2026-11-24, proven at the next reboot)
 **What went wrong.** At the boot after the outage `network-online.target` was reached while the LACP bond had no working partner yet. `/mnt/dataDrogo` and `/mnt/dataDrogoRW` failed (`mount error(113): could not connect`), `/mnt/dataYmir` timed out after 30 s. All three are `nofail`, so `pve-guests.service` went on (`Wants=` does not wait for a mount that failed). CT 121, 122 and 126 did not start (their `mp0`/`mp1` host path was missing) and CT 123 started on empty directories, so `arr.service` failed. Nothing retried the mounts. The `ymir-backup` storage is mounted by Proxmox itself (`pvestatd`, not `/etc/fstab`), which retries by itself every few seconds, so it needs no change. Where things are defined: the three mounts are in `/etc/fstab`, written by the role from `nfs_data` and `cifs_mounts` in `ansible/group_vars/proxmox.yml`.
 
 **What the role sets up now:**
